@@ -1,0 +1,59 @@
+import json
+from controllers.admin_controller import AdminAIController
+from config.ai_config import client, model_name
+
+class ParentAIController(AdminAIController):
+    def __init__(self):
+        # Inherits the Google Cloud Voice TTS/STT clients and translation from AdminAIController
+        super().__init__()
+
+    # --- 3. Student assessment per subject and per test ---
+    def generate_assessment_summary(self, student_name: str, subject: str, test_name: str, marks_obtained: float, total_marks: float, teacher_remarks: str) -> str:
+        prompt = f"""
+        You are an empathetic, supportive AI school counselor communicating with a parent.
+        Provide a brief, clear summary of the student's performance on a recent test.
+        
+        Student Name: {student_name}
+        Subject: {subject}
+        Test Name: {test_name}
+        Score: {marks_obtained}/{total_marks}
+        Teacher's Notes: "{teacher_remarks}"
+        
+        Guidelines:
+        1. Break down what this grade means simply (avoid confusing educational jargon).
+        2. Keep the tone encouraging, highlighting strengths while gently addressing areas for growth.
+        3. Provide 1-2 practical, easy things the parent can do at home to support their child.
+        
+        You MUST return the output STRICTLY as a valid JSON object. Do not use markdown blocks.
+        Schema:
+        {{
+            "summary_title": "...",
+            "performance_breakdown": "...",
+            "encouraging_feedback": "...",
+            "home_support_tips": ["...", "..."]
+        }}
+        """
+        response = client.models.generate_content(model=model_name, contents=prompt)
+        return response.text.replace("```json", "").replace("```", "").strip()
+
+    # --- 4. Assignment due date alerts ---
+    def generate_due_date_alert(self, student_name: str, assignment_title: str, subject: str, due_date: str, description: str) -> str:
+        prompt = f"""
+        You are a helpful school assistant sending a friendly reminder alert to a parent.
+        
+        Student Name: {student_name}
+        Assignment: {assignment_title}
+        Subject: {subject}
+        Due Date: {due_date}
+        Task Details: {description}
+        
+        You MUST return the output STRICTLY as a valid JSON object. Do not use markdown blocks.
+        Schema:
+        {{
+            "alert_title": "...",
+            "notification_message": "...",
+            "suggested_parent_action": "..."
+        }}
+        """
+        response = client.models.generate_content(model=model_name, contents=prompt)
+        return response.text.replace("```json", "").replace("```", "").strip()
