@@ -40,6 +40,6 @@ app.include_router(parent_route.router, prefix="/api/parent", tags=["Parent Dash
 app.include_router(student_route.router, prefix="/api/student", tags=["Student Dashboard"])
 
 # 8. Root Health Check Endpoint
-@router.get("/")
+@app.get("/")
 async def root():
-    return {"message": "Welcome to the SSS@school API! All systems operational."}
+    return {"status": "running", "message": "SSS Backend is live!"}
