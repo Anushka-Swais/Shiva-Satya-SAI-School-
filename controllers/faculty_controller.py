@@ -1,10 +1,10 @@
 import json
 from fastapi import APIRouter, File, UploadFile, HTTPException, Form
 from pydantic import BaseModel
-from controllers.student_controller import StudentAIController
+from controllers.faculty_controller import FacultyAIController
 
 router = APIRouter()
-student_controller = StudentAIController()
+faculty_controller = FacultyAIController()
 
 # --- Schemas ---
 class TranslationRequest(BaseModel):
@@ -15,54 +15,53 @@ class TTSRequest(BaseModel):
     text: str
     language: str = "English"
 
-class ContentRequest(BaseModel):
+class MaterialRequest(BaseModel):
     topic: str
-    learning_capacity: str  
+    grade_level: str
 
-class QuizRequest(BaseModel):
+class QuestionPaperRequest(BaseModel):
     topic: str
     difficulty: str
-    num_questions: int = 5
+    format_type: str
+    num_questions: int
 
-class QuizEvaluationRequest(BaseModel):
-    submission_data: dict  
-
-class SelfAssessmentRequest(BaseModel):
-    performance_data: dict 
+class AutoCorrectRequest(BaseModel):
+    question: str
+    student_answer: str
+    rubric: str
 
 class AlertRequest(BaseModel):
-    assignment_name: str
-    due_date: str
+    alert_type: str 
+    details: dict 
 
+class AssessmentRequest(BaseModel):
+    scope_description: str 
+    performance_data: dict
 
 # --- Endpoints ---
 
-# 4. Language script translator
 @router.post("/translate")
 async def translate_script(req: TranslationRequest):
     try:
-        return {"status": "success", "translated_text": student_controller.translate_text(req.text, req.target_language)}
+        return {"status": "success", "translated_text": faculty_controller.translate_text(req.text, req.target_language)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 6. Text to Voice
 @router.post("/text-to-voice")
 async def text_to_voice(req: TTSRequest):
     try:
-        return {"status": "success", "audio_base64": student_controller.generate_speech(req.text, req.language)}
+        return {"status": "success", "audio_base64": faculty_controller.generate_speech(req.text, req.language)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 6. Voice to Text
 @router.post("/voice-to-text")
 async def voice_to_text(file: UploadFile = File(...), language: str = Form("English")):
     try:
         audio_bytes = await file.read()
-        return {"status": "success", "transcription": student_controller.process_audio_to_text(audio_bytes, language)}
+        return {"status": "success", "transcription": faculty_controller.process_audio_to_text(audio_bytes, language)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 5. Audio language translator
 @router.post("/audio-translator")
 async def audio_translator(
     file: UploadFile = File(...), 
@@ -71,54 +70,46 @@ async def audio_translator(
 ):
     try:
         audio_bytes = await file.read()
-        return {"status": "success", "data": student_controller.audio_language_translator(audio_bytes, source_language, target_language)}
+        return {"status": "success", "data": faculty_controller.audio_language_translator(audio_bytes, source_language, target_language)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 1. Automatic content generation
-@router.post("/content/generate")
-async def generate_content(req: ContentRequest):
+@router.post("/generate-material")
+async def generate_material(req: MaterialRequest):
     try:
-        content = student_controller.generate_content(req.topic, req.learning_capacity)
-        return {"status": "success", "generated_content": content}
+        material_str = faculty_controller.generate_teaching_material(req.topic, req.grade_level)
+        return {"status": "success", "teaching_material": json.loads(material_str)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 2. Automatic quiz generation
-@router.post("/quiz/generate")
-async def generate_quiz(req: QuizRequest):
+@router.post("/generate-exam")
+async def generate_exam(req: QuestionPaperRequest):
     try:
-        quiz_string = student_controller.generate_quiz(req.topic, req.difficulty, req.num_questions)
-        # Parse string to actual JSON object for the frontend
-        return {"status": "success", "quiz_data": json.loads(quiz_string)}
+        exam_str = faculty_controller.generate_question_paper(req.topic, req.difficulty, req.format_type, req.num_questions)
+        return {"status": "success", "question_paper": json.loads(exam_str)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 2. Auto correction
-@router.post("/quiz/evaluate")
-async def evaluate_quiz(req: QuizEvaluationRequest):
+@router.post("/auto-correct")
+async def auto_correct(req: AutoCorrectRequest):
     try:
-        eval_string = student_controller.evaluate_quiz(req.model_dump())
-        # Parse string to actual JSON object for the frontend
-        return {"status": "success", "evaluation_report": json.loads(eval_string)}
+        feedback_str = faculty_controller.auto_correct_answer(req.question, req.student_answer, req.rubric)
+        return {"status": "success", "grading_feedback": json.loads(feedback_str)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 3. Self Assessment with graphical representation
-@router.post("/assess/self")
-async def self_assessment(req: SelfAssessmentRequest):
-    try:
-        assessment_string = student_controller.assess_self_performance(req.model_dump())
-        # Parse string to actual JSON object containing chart data for the frontend
-        return {"status": "success", "assessment_data": json.loads(assessment_string)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# 7. Assignment due date alerts
-@router.post("/alerts/generate")
+@router.post("/alerts")
 async def generate_alert(req: AlertRequest):
     try:
-        alert_msg = student_controller.generate_assignment_alert(req.assignment_name, req.due_date)
-        return {"status": "success", "alert_message": alert_msg}
+        alert = faculty_controller.generate_teacher_alert(req.alert_type, req.details)
+        return {"status": "success", "alert_message": alert}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/assess")
+async def evaluate_performance(req: AssessmentRequest):
+    try:
+        assessment_str = faculty_controller.evaluate_performance(req.performance_data, req.scope_description)
+        return {"status": "success", "assessment_report": json.loads(assessment_str)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
