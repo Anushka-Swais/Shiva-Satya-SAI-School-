@@ -11,7 +11,7 @@ load_dotenv()
 from config.database import engine, Base
 
 # 3. Import all your dashboard routes
-from routes import admin_routes, faculty_route, hm_route, parent_route, student_route
+from routes import admin_route, faculty_route, hm_route, parent_route, student_route
 
 # 4. Create database tables (if they don't exist yet)
 Base.metadata.create_all(bind=engine)
@@ -33,7 +33,7 @@ app.add_middleware(
 )
 
 # 7. Register all your Dashboard Routes
-app.include_router(admin_routes.router, prefix="/api/admin", tags=["Admin Dashboard"])
+app.include_router(admin_route.router, prefix="/api/admin", tags=["Admin Dashboard"])
 app.include_router(faculty_route.router, prefix="/api/faculty", tags=["Faculty Dashboard"])
 app.include_router(hm_route.router, prefix="/api/hm", tags=["Headmaster Dashboard"])
 app.include_router(parent_route.router, prefix="/api/parent", tags=["Parent Dashboard"])
