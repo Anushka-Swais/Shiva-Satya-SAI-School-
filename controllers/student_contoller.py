@@ -23,7 +23,7 @@ class StudentAIController:
         self.advanced_language_map = {
             "english": {"code": "en-IN", "voice": "en-IN-Neural2-A"},
             "hindi": {"code": "hi-IN", "voice": "hi-IN-Neural2-A"},
-            "telugu": {"code": "te-IN", "voice": "te-IN-Wavenet-B"},
+            "telugu": {"code": "te-IN", "voice": "te-IN-Wavenet-A"},
             "kannada": {"code": "kn-IN", "voice": "kn-IN-Wavenet-A"},
             "tamil": {"code": "ta-IN", "voice": "ta-IN-Wavenet-A"},
             "gujrati": {"code": "gu-IN", "voice": "gu-IN-Wavenet-A"}, 
