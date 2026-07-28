@@ -21,14 +21,17 @@ class StudentAIController:
 
         # Fully upgraded language mapping for premium Wavenet & Neural2 Google TTS voices
         self.advanced_language_map = {
-            "english": {"code": "en-IN", "voice": "en-IN-Neural2-A"},
+            "english": {"code": "en-IN", "voice": "en-IN-Neural2-B"},
             "hindi": {"code": "hi-IN", "voice": "hi-IN-Neural2-A"},
-            "telugu": {"code": "te-IN", "voice": "te-IN-Wavenet-A"},
-            "kannada": {"code": "kn-IN", "voice": "kn-IN-Wavenet-A"},
-            "tamil": {"code": "ta-IN", "voice": "ta-IN-Wavenet-A"},
-            "gujrati": {"code": "gu-IN", "voice": "gu-IN-Wavenet-A"}, 
-            "gujarati": {"code": "gu-IN", "voice": "gu-IN-Wavenet-A"},
-            "marathi": {"code": "mr-IN", "voice": "mr-IN-Wavenet-A"}
+            "telugu": {"code": "te-IN", "voice": "te-IN-Standard-A"},
+            "kannada": {"code": "kn-IN", "voice": "kn-IN-Standard-A"},
+            "tamil": {"code": "ta-IN", "voice": "ta-IN-Standard-A"},
+            "malayalam": {"code": "ml-IN", "voice": "ml-IN-Standard-A"},
+            "bengali": {"code": "bn-IN", "voice": "bn-IN-Standard-A"},
+            "marathi": {"code": "mr-IN", "voice": "mr-IN-Standard-A"},
+            "oriya": {"code": "or-IN", "voice": "or-IN-Standard-A"},
+            "gujarati": {"code": "gu-IN", "voice": "gu-IN-Standard-A"},
+            "gujrati": {"code": "gu-IN", "voice": "gu-IN-Standard-A"}
         }
 
     def _get_voice_config(self, language_name: str) -> dict:
