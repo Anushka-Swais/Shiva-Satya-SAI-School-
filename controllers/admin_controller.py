@@ -18,30 +18,39 @@ class AdminAIController:
         self.tts_client = texttospeech.TextToSpeechClient(client_options=client_options)
         self.stt_client = speech.SpeechClient(client_options=client_options)
 
-        # Standardized language mapping for Google TTS/STT
-        self.language_map = {
-            "english": "en-IN", "hindi": "hi-IN", "telugu": "te-IN",
-            "kannada": "kn-IN", "tamil": "ta-IN", "gujrati": "gu-IN", 
-            "gujarati": "gu-IN", "marathi": "mr-IN", "panjabi": "pa-IN", "punjabi": "pa-IN"
+        # Upgraded language mapping for native scripts and premium Google TTS voices
+        self.advanced_language_map = {
+            "english": {"code": "en-IN", "voice": "en-IN-Neural2-A"},
+            "hindi": {"code": "hi-IN", "voice": "hi-IN-Neural2-A"},
+            "telugu": {"code": "te-IN", "voice": "te-IN-Standard-A"},
+            "kannada": {"code": "kn-IN", "voice": "kn-IN-Standard-A"},
+            "tamil": {"code": "ta-IN", "voice": "ta-IN-Wavenet-A"},
+            "gujrati": {"code": "gu-IN", "voice": "gu-IN-Standard-A"}, 
+            "gujarati": {"code": "gu-IN", "voice": "gu-IN-Standard-A"},
+            "marathi": {"code": "mr-IN", "voice": "mr-IN-Standard-A"}
         }
 
-    def _get_lang_code(self, language_name: str) -> str:
+    def _get_voice_config(self, language_name: str) -> dict:
         lang_lower = language_name.lower().strip()
-        return self.language_map.get(lang_lower, language_name if "-" in language_name else "en-US")
+        # Defaults to Indian English Neural2 if language is not found
+        return self.advanced_language_map.get(lang_lower, {"code": "en-IN", "voice": "en-IN-Neural2-A"})
 
     # --- 1. Language script translator ---
     def translate_text(self, text: str, target_language: str) -> str:
-        prompt = f"Translate the following text to {target_language}. Provide only the precise translation without any markdown formatting or conversational filler:\n\n{text}"
+        # Strictly enforce native script output to prevent defaulting to English
+        prompt = f"You are an expert linguistic translator. Translate the following text natively into {target_language}. You MUST output the text in the native script/characters of {target_language}. Provide only the precise translation without any markdown formatting or conversational filler:\n\n{text}"
         response = client.models.generate_content(model=model_name, contents=prompt)
         return response.text.strip()
 
-    # --- 3. Text to Voice ---
+    # --- 3. Text to Voice (With Premium Accents) ---
     def generate_speech(self, text: str, language: str = "English") -> str:
-        lang_code = self._get_lang_code(language)
+        voice_config = self._get_voice_config(language)
         synthesis_input = texttospeech.SynthesisInput(text=text)
+        
+        # Enforce the specific regional voice model (e.g., Wavenet or Neural2)
         voice = texttospeech.VoiceSelectionParams(
-            language_code=lang_code, 
-            ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL
+            language_code=voice_config["code"], 
+            name=voice_config["voice"]
         )
         audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
         response = self.tts_client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
@@ -49,11 +58,11 @@ class AdminAIController:
 
     # --- 3. Voice to Text ---
     def process_audio_to_text(self, audio_bytes: bytes, language: str = "English") -> str:
-        lang_code = self._get_lang_code(language)
+        voice_config = self._get_voice_config(language)
         audio = speech.RecognitionAudio(content=audio_bytes)
         config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            language_code=lang_code,
+            language_code=voice_config["code"],
         )
         response = self.stt_client.recognize(config=config, audio=audio)
         return " ".join([result.alternatives[0].transcript for result in response.results])
