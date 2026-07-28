@@ -19,15 +19,16 @@ class AdminAIController:
         self.stt_client = speech.SpeechClient(client_options=client_options)
 
         # Upgraded language mapping for native scripts and premium Google TTS voices
+        # Fully upgraded language mapping for premium Wavenet & Neural2 Google TTS voices
         self.advanced_language_map = {
             "english": {"code": "en-IN", "voice": "en-IN-Neural2-A"},
             "hindi": {"code": "hi-IN", "voice": "hi-IN-Neural2-A"},
-            "telugu": {"code": "te-IN", "voice": "te-IN-Standard-A"},
-            "kannada": {"code": "kn-IN", "voice": "kn-IN-Standard-A"},
+            "telugu": {"code": "te-IN", "voice": "te-IN-Wavenet-A"},
+            "kannada": {"code": "kn-IN", "voice": "kn-IN-Wavenet-A"},
             "tamil": {"code": "ta-IN", "voice": "ta-IN-Wavenet-A"},
-            "gujrati": {"code": "gu-IN", "voice": "gu-IN-Standard-A"}, 
-            "gujarati": {"code": "gu-IN", "voice": "gu-IN-Standard-A"},
-            "marathi": {"code": "mr-IN", "voice": "mr-IN-Standard-A"}
+            "gujrati": {"code": "gu-IN", "voice": "gu-IN-Wavenet-A"}, 
+            "gujarati": {"code": "gu-IN", "voice": "gu-IN-Wavenet-A"},
+            "marathi": {"code": "mr-IN", "voice": "mr-IN-Wavenet-A"}
         }
 
     def _get_voice_config(self, language_name: str) -> dict:
