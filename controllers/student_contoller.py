@@ -23,7 +23,7 @@ class StudentAIController:
         self.advanced_language_map = {
             "english": {"code": "en-IN", "voice": "en-IN-Neural2-A"},
             "hindi": {"code": "hi-IN", "voice": "hi-IN-Neural2-A"},
-            "telugu": {"code": "te-IN", "voice": "te-IN-Wavenet-A"},
+            "telugu": {"code": "te-IN", "voice": "te-IN-Wavenet-B"},
             "kannada": {"code": "kn-IN", "voice": "kn-IN-Wavenet-A"},
             "tamil": {"code": "ta-IN", "voice": "ta-IN-Wavenet-A"},
             "gujrati": {"code": "gu-IN", "voice": "gu-IN-Wavenet-A"}, 
@@ -57,7 +57,7 @@ class StudentAIController:
         # Upgraded Audio Config for maximum clarity
         audio_config = texttospeech.AudioConfig(
             audio_encoding=texttospeech.AudioEncoding.MP3,
-            speaking_rate=0.85,       # Slows down the voice slightly for better articulation
+            speaking_rate=0.75,       # Slows down the voice slightly for better articulation
             sample_rate_hertz=24000   # Forces high-definition audio quality
         )
         
