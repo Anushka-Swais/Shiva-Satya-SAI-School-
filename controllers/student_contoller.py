@@ -19,7 +19,6 @@ class StudentAIController:
         self.tts_client = texttospeech.TextToSpeechClient(client_options=client_options)
         self.stt_client = speech.SpeechClient(client_options=client_options)
 
-        # Upgraded language mapping for native scripts and premium Google TTS voices
         # Fully upgraded language mapping for premium Wavenet & Neural2 Google TTS voices
         self.advanced_language_map = {
             "english": {"code": "en-IN", "voice": "en-IN-Neural2-A"},
@@ -44,7 +43,7 @@ class StudentAIController:
         response = client.models.generate_content(model=model_name, contents=prompt)
         return response.text.strip()
 
-    # --- 6. Text to Voice (With Premium Accents) ---
+    # --- 6. Text to Voice (With Premium Accents & Clarity Fix) ---
     def generate_speech(self, text: str, language: str = "English") -> str:
         voice_config = self._get_voice_config(language)
         synthesis_input = texttospeech.SynthesisInput(text=text)
@@ -54,7 +53,14 @@ class StudentAIController:
             language_code=voice_config["code"], 
             name=voice_config["voice"]
         )
-        audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
+        
+        # Upgraded Audio Config for maximum clarity
+        audio_config = texttospeech.AudioConfig(
+            audio_encoding=texttospeech.AudioEncoding.MP3,
+            speaking_rate=0.85,       # Slows down the voice slightly for better articulation
+            sample_rate_hertz=24000   # Forces high-definition audio quality
+        )
+        
         response = self.tts_client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
         return base64.b64encode(response.audio_content).decode("utf-8")
 
