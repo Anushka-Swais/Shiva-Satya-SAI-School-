@@ -57,22 +57,12 @@ class StudentAIController:
             
         return response.text.strip()
 
-    # --- 6. Text to Voice (With Premium Accents & Clarity Fix) ---
+    # --- 6. Text to Voice ---
     def generate_speech(self, text: str, language: str = "English") -> str:
         voice_config = self._get_voice_config(language)
         synthesis_input = texttospeech.SynthesisInput(text=text)
-        
-        voice = texttospeech.VoiceSelectionParams(
-            language_code=voice_config["code"], 
-            name=voice_config["voice"]
-        )
-        
-        audio_config = texttospeech.AudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.MP3,
-            speaking_rate=0.75,       
-            sample_rate_hertz=24000   
-        )
-        
+        voice = texttospeech.VoiceSelectionParams(language_code=voice_config["code"], name=voice_config["voice"])
+        audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3, speaking_rate=0.75, sample_rate_hertz=24000)
         response = self.tts_client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
         return base64.b64encode(response.audio_content).decode("utf-8")
 
@@ -80,23 +70,16 @@ class StudentAIController:
     def process_audio_to_text(self, audio_bytes: bytes, language: str = "English") -> str:
         voice_config = self._get_voice_config(language)
         audio = speech.RecognitionAudio(content=audio_bytes)
-        config = speech.RecognitionConfig(
-            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            language_code=voice_config["code"],
-        )
+        config = speech.RecognitionConfig(encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16, language_code=voice_config["code"])
         response = self.stt_client.recognize(config=config, audio=audio)
         return " ".join([result.alternatives[0].transcript for result in response.results])
 
-    # --- 5. Audio language translator (UPDATED WITH TRACKING PASS-THROUGH) ---
+    # --- 5. Audio language translator ---
     def audio_language_translator(self, audio_bytes: bytes, source_language: str, target_language: str, user_email: str, client_name: str) -> dict:
         original_text = self.process_audio_to_text(audio_bytes, source_language)
-        translated_text = self.translate_text(original_text, target_language, user_email, client_name) # Pass credentials down
+        translated_text = self.translate_text(original_text, target_language, user_email, client_name) 
         translated_audio_base64 = self.generate_speech(translated_text, target_language)
-        return {
-            "original_text": original_text, 
-            "translated_text": translated_text, 
-            "audio_base64": translated_audio_base64
-        }
+        return {"original_text": original_text, "translated_text": translated_text, "audio_base64": translated_audio_base64}
 
     # --- 1. Automatic content generation (UPDATED WITH TRACKING) ---
     def generate_content(self, topic: str, learning_capacity: str, user_email: str, client_name: str) -> str:
@@ -107,7 +90,6 @@ class StudentAIController:
         """
         response = client.models.generate_content(model=model_name, contents=prompt)
         
-        # --- TRACKING ---
         db = SessionLocal()
         try:
             log_gemini_usage(db, response, client_name, user_email, "Student Dashboard", "Content Generation")
@@ -125,7 +107,6 @@ class StudentAIController:
         """
         response = client.models.generate_content(model=model_name, contents=prompt)
         
-        # --- TRACKING ---
         db = SessionLocal()
         try:
             log_gemini_usage(db, response, client_name, user_email, "Student Dashboard", "Quiz Generator")
@@ -145,7 +126,6 @@ class StudentAIController:
         """
         response = client.models.generate_content(model=model_name, contents=prompt)
         
-        # --- TRACKING ---
         db = SessionLocal()
         try:
             log_gemini_usage(db, response, client_name, user_email, "Student Dashboard", "Evaluate Quiz")
@@ -170,7 +150,6 @@ class StudentAIController:
         """
         response = client.models.generate_content(model=model_name, contents=prompt)
         
-        # --- TRACKING ---
         db = SessionLocal()
         try:
             log_gemini_usage(db, response, client_name, user_email, "Student Dashboard", "Self Assessment")
@@ -187,7 +166,6 @@ class StudentAIController:
         """
         response = client.models.generate_content(model=model_name, contents=prompt)
         
-        # --- TRACKING ---
         db = SessionLocal()
         try:
             log_gemini_usage(db, response, client_name, user_email, "Student Dashboard", "Generate Alert")
