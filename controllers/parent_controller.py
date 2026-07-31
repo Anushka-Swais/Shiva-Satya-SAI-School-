@@ -2,13 +2,17 @@ import json
 from controllers.admin_controller import AdminAIController
 from config.ai_config import client, model_name
 
+# --- NEW TRACKING IMPORTS ---
+from config.database import SessionLocal
+from utils.ai_tracker import log_gemini_usage
+
 class ParentAIController(AdminAIController):
     def __init__(self):
         # Inherits the Google Cloud Voice TTS/STT clients and translation from AdminAIController
         super().__init__()
 
-    # --- 3. Student assessment per subject and per test ---
-    def generate_assessment_summary(self, student_name: str, subject: str, test_name: str, marks_obtained: float, total_marks: float, teacher_remarks: str) -> str:
+    # --- 3. Student assessment per subject and per test (UPDATED WITH TRACKING) ---
+    def generate_assessment_summary(self, student_name: str, subject: str, test_name: str, marks_obtained: float, total_marks: float, teacher_remarks: str, user_email: str, client_name: str) -> str:
         prompt = f"""
         You are an empathetic, supportive AI school counselor communicating with a parent.
         Provide a brief, clear summary of the student's performance on a recent test.
@@ -34,10 +38,26 @@ class ParentAIController(AdminAIController):
         }}
         """
         response = client.models.generate_content(model=model_name, contents=prompt)
+        
+        # --- TRACKING LOGIC ---
+        db = SessionLocal()
+        try:
+            log_gemini_usage(
+                db=db,
+                response=response,
+                client_name=client_name,
+                user_email=user_email,
+                module_name="Parent Dashboard",
+                feature_name="Assessment Summary"
+            )
+        finally:
+            db.close()
+        # ----------------------
+
         return response.text.replace("```json", "").replace("```", "").strip()
 
-    # --- 4. Assignment due date alerts ---
-    def generate_due_date_alert(self, student_name: str, assignment_title: str, subject: str, due_date: str, description: str) -> str:
+    # --- 4. Assignment due date alerts (UPDATED WITH TRACKING) ---
+    def generate_due_date_alert(self, student_name: str, assignment_title: str, subject: str, due_date: str, description: str, user_email: str, client_name: str) -> str:
         prompt = f"""
         You are a helpful school assistant sending a friendly reminder alert to a parent.
         
@@ -56,4 +76,20 @@ class ParentAIController(AdminAIController):
         }}
         """
         response = client.models.generate_content(model=model_name, contents=prompt)
+        
+        # --- TRACKING LOGIC ---
+        db = SessionLocal()
+        try:
+            log_gemini_usage(
+                db=db,
+                response=response,
+                client_name=client_name,
+                user_email=user_email,
+                module_name="Parent Dashboard",
+                feature_name="Due Date Alert"
+            )
+        finally:
+            db.close()
+        # ----------------------
+
         return response.text.replace("```json", "").replace("```", "").strip()

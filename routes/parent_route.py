@@ -6,14 +6,18 @@ from controllers.parent_controller import ParentAIController
 router = APIRouter()
 parent_ai = ParentAIController()
 
-# --- Schemas ---
+# --- Schemas (Updated with Tracking Fields) ---
 class TranslationRequest(BaseModel):
     text: str
     target_language: str
+    user_email: str
+    client_name: str = "SSS"
 
 class TTSRequest(BaseModel):
     text: str
     language: str = "English"
+    user_email: str
+    client_name: str = "SSS"
 
 class AssessmentSummaryRequest(BaseModel):
     student_name: str
@@ -22,6 +26,8 @@ class AssessmentSummaryRequest(BaseModel):
     marks_obtained: float
     total_marks: float
     teacher_remarks: str
+    user_email: str
+    client_name: str = "SSS"
 
 class DueDateAlertRequest(BaseModel):
     student_name: str
@@ -29,15 +35,23 @@ class DueDateAlertRequest(BaseModel):
     subject: str
     due_date: str
     description: str
+    user_email: str
+    client_name: str = "SSS"
 
 
 # --- Endpoints ---
 
-# 1. Language script translator (Inherited logic)
+# 1. Language script translator (Inherited logic - Now passes tracking data)
 @router.post("/translate")
 async def translate_script(req: TranslationRequest):
     try:
-        return {"status": "success", "translated_text": parent_ai.translate_text(req.text, req.target_language)}
+        translated = parent_ai.translate_text(
+            req.text, 
+            req.target_language, 
+            req.user_email, 
+            req.client_name
+        )
+        return {"status": "success", "translated_text": translated}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -45,29 +59,44 @@ async def translate_script(req: TranslationRequest):
 @router.post("/text-to-voice")
 async def text_to_voice(req: TTSRequest):
     try:
+        # TTS doesn't consume Gemini tokens, but the schema keeps the frontend API consistent
         return {"status": "success", "audio_base64": parent_ai.generate_speech(req.text, req.language)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # 5. Voice to Text (Inherited logic)
 @router.post("/voice-to-text")
-async def voice_to_text(file: UploadFile = File(...), language: str = Form("English")):
+async def voice_to_text(
+    file: UploadFile = File(...), 
+    language: str = Form("English"),
+    user_email: str = Form(...),
+    client_name: str = Form("SSS")
+):
     try:
         audio_bytes = await file.read()
         return {"status": "success", "transcription": parent_ai.process_audio_to_text(audio_bytes, language)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 2. Audio language translator (Inherited logic)
+# 2. Audio language translator (Inherited logic - Now passes tracking data)
 @router.post("/audio-translator")
 async def audio_translator(
     file: UploadFile = File(...), 
     source_language: str = Form("English"), 
-    target_language: str = Form(...)
+    target_language: str = Form(...),
+    user_email: str = Form(...),
+    client_name: str = Form("SSS")
 ):
     try:
         audio_bytes = await file.read()
-        return {"status": "success", "data": parent_ai.audio_language_translator(audio_bytes, source_language, target_language)}
+        result = parent_ai.audio_language_translator(
+            audio_bytes, 
+            source_language, 
+            target_language, 
+            user_email, 
+            client_name
+        )
+        return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -77,8 +106,14 @@ async def audio_translator(
 async def get_assessment_summary(req: AssessmentSummaryRequest):
     try:
         summary_str = parent_ai.generate_assessment_summary(
-            student_name=req.student_name, subject=req.subject, test_name=req.test_name,
-            marks_obtained=req.marks_obtained, total_marks=req.total_marks, teacher_remarks=req.teacher_remarks
+            student_name=req.student_name, 
+            subject=req.subject, 
+            test_name=req.test_name,
+            marks_obtained=req.marks_obtained, 
+            total_marks=req.total_marks, 
+            teacher_remarks=req.teacher_remarks,
+            user_email=req.user_email,
+            client_name=req.client_name
         )
         return {"status": "success", "summary": json.loads(summary_str)}
     except Exception as e:
@@ -89,8 +124,13 @@ async def get_assessment_summary(req: AssessmentSummaryRequest):
 async def get_due_date_alert(req: DueDateAlertRequest):
     try:
         alert_str = parent_ai.generate_due_date_alert(
-            student_name=req.student_name, assignment_title=req.assignment_title, 
-            subject=req.subject, due_date=req.due_date, description=req.description
+            student_name=req.student_name, 
+            assignment_title=req.assignment_title, 
+            subject=req.subject, 
+            due_date=req.due_date, 
+            description=req.description,
+            user_email=req.user_email,
+            client_name=req.client_name
         )
         return {"status": "success", "alert_data": json.loads(alert_str)}
     except Exception as e:

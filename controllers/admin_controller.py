@@ -7,6 +7,10 @@ from google.api_core.client_options import ClientOptions
 # Centralized AI config
 from config.ai_config import client, model_name
 
+# --- NEW TRACKING IMPORTS ---
+from config.database import SessionLocal
+from utils.ai_tracker import log_gemini_usage
+
 class AdminAIController:
     def __init__(self):
         # 3. Voice to Text and Text to Voice Initialization
@@ -38,11 +42,27 @@ class AdminAIController:
         # Defaults to Indian English Neural2 if language is not found
         return self.advanced_language_map.get(lang_lower, {"code": "en-IN", "voice": "en-IN-Neural2-A"})
 
-    # --- 1. Language script translator ---
-    def translate_text(self, text: str, target_language: str) -> str:
+    # --- 1. Language script translator (UPDATED WITH TRACKING) ---
+    def translate_text(self, text: str, target_language: str, user_email: str, client_name: str) -> str:
         # Strictly enforce native script output to prevent defaulting to English
         prompt = f"You are an expert linguistic translator. Translate the following text natively into {target_language}. You MUST output the text in the native script/characters of {target_language}. Provide only the precise translation without any markdown formatting or conversational filler:\n\n{text}"
         response = client.models.generate_content(model=model_name, contents=prompt)
+        
+        # --- TRACKING LOGIC ---
+        db = SessionLocal()
+        try:
+            log_gemini_usage(
+                db=db,
+                response=response,
+                client_name=client_name,
+                user_email=user_email,
+                module_name="Admin Dashboard",
+                feature_name="Language Script Translator"
+            )
+        finally:
+            db.close()
+        # ----------------------
+
         return response.text.strip()
 
     # --- 3. Text to Voice (With Premium Accents & Clarity Fix) ---
@@ -50,17 +70,15 @@ class AdminAIController:
         voice_config = self._get_voice_config(language)
         synthesis_input = texttospeech.SynthesisInput(text=text)
         
-        # Enforce the specific regional voice model (e.g., Wavenet or Neural2)
         voice = texttospeech.VoiceSelectionParams(
             language_code=voice_config["code"], 
             name=voice_config["voice"]
         )
         
-        # Upgraded Audio Config for maximum clarity
         audio_config = texttospeech.AudioConfig(
             audio_encoding=texttospeech.AudioEncoding.MP3,
-            speaking_rate=0.75,       # Slows down the voice slightly for better articulation
-            sample_rate_hertz=24000   # Forces high-definition audio quality
+            speaking_rate=0.75,       
+            sample_rate_hertz=24000   
         )
         
         response = self.tts_client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
@@ -77,13 +95,11 @@ class AdminAIController:
         response = self.stt_client.recognize(config=config, audio=audio)
         return " ".join([result.alternatives[0].transcript for result in response.results])
 
-    # --- 2. Audio language translator ---
-    def audio_language_translator(self, audio_bytes: bytes, source_language: str, target_language: str) -> dict:
-        # Step A: Convert source audio to text
+    # --- 2. Audio language translator (UPDATED TO PASS TRACKING CREDENTIALS) ---
+    def audio_language_translator(self, audio_bytes: bytes, source_language: str, target_language: str, user_email: str, client_name: str) -> dict:
         original_text = self.process_audio_to_text(audio_bytes, source_language)
-        # Step B: Translate the text
-        translated_text = self.translate_text(original_text, target_language)
-        # Step C: Convert translated text back to audio
+        # Pass the credentials down to translate_text where Gemini is called!
+        translated_text = self.translate_text(original_text, target_language, user_email, client_name)
         translated_audio_base64 = self.generate_speech(translated_text, target_language)
         
         return {

@@ -1,115 +1,112 @@
 import json
-from fastapi import APIRouter, File, UploadFile, HTTPException, Form
-from pydantic import BaseModel
-from controllers.faculty_controller import FacultyAIController
+from config.ai_config import client, model_name
+from config.database import SessionLocal
+from utils.ai_tracker import log_gemini_usage
 
-router = APIRouter()
-faculty_controller = FacultyAIController()
+# Note: If FacultyAIController uses Google Cloud TTS/STT, you can inherit from AdminAIController.
+# For now, I have implemented the core Gemini Generative features with Tracking!
 
-# --- Schemas ---
-class TranslationRequest(BaseModel):
-    text: str
-    target_language: str
+class FacultyAIController:
+    def __init__(self):
+        pass
 
-class TTSRequest(BaseModel):
-    text: str
-    language: str = "English"
+    # --- Core Translation & Voice Methods (Placeholders as provided, but added tracking arguments) ---
+    def translate_text(self, text: str, target_language: str, user_email: str, client_name: str):
+        # Your AI translation logic goes here
+        return f"Translated '{text}' to {target_language}"
 
-class MaterialRequest(BaseModel):
-    topic: str
-    grade_level: str
+    def generate_speech(self, text: str, language: str):
+        # Your TTS logic goes here
+        return "base64_audio_string_mock"
 
-class QuestionPaperRequest(BaseModel):
-    topic: str
-    difficulty: str
-    format_type: str
-    num_questions: int
+    def process_audio_to_text(self, audio_bytes, language: str):
+        # Your STT logic goes here
+        return f"Transcribed text in {language}"
 
-class AutoCorrectRequest(BaseModel):
-    question: str
-    student_answer: str
-    rubric: str
+    def audio_language_translator(self, audio_bytes, source_language: str, target_language: str, user_email: str, client_name: str):
+        # Your Audio translation logic
+        return {"original_text": "Audio text", "translated_text": f"Translated to {target_language}"}
 
-class AlertRequest(BaseModel):
-    alert_type: str 
-    details: dict 
+    # --- Faculty Specific AI Methods (Upgraded to use Gemini + Usage Tracking) ---
+    
+    def generate_teaching_material(self, topic: str, grade_level: str, user_email: str, client_name: str):
+        prompt = f"""
+        Act as an expert teacher. Generate a lesson plan for '{topic}' suited for '{grade_level}'.
+        Return ONLY valid JSON format.
+        Schema: {{"topic": "...", "grade_level": "...", "material": "...", "activities": ["...", "..."]}}
+        """
+        response = client.models.generate_content(model=model_name, contents=prompt)
+        
+        # --- TRACKING ---
+        db = SessionLocal()
+        try:
+            log_gemini_usage(db, response, client_name, user_email, "Faculty Dashboard", "Generate Material")
+        finally:
+            db.close()
+            
+        return response.text.replace("```json", "").replace("```", "").strip()
 
-class AssessmentRequest(BaseModel):
-    scope_description: str 
-    performance_data: dict
+    def generate_question_paper(self, topic: str, difficulty: str, format_type: str, num_questions: int, user_email: str, client_name: str):
+        prompt = f"""
+        Create a {difficulty} exam on '{topic}' containing {num_questions} {format_type} questions.
+        Return ONLY valid JSON format.
+        Schema: {{"topic": "...", "difficulty": "...", "format": "...", "questions": ["...", "..."]}}
+        """
+        response = client.models.generate_content(model=model_name, contents=prompt)
+        
+        # --- TRACKING ---
+        db = SessionLocal()
+        try:
+            log_gemini_usage(db, response, client_name, user_email, "Faculty Dashboard", "Generate Exam")
+        finally:
+            db.close()
+            
+        return response.text.replace("```json", "").replace("```", "").strip()
 
-# --- Endpoints ---
+    def auto_correct_answer(self, question: str, student_answer: str, rubric: str, user_email: str, client_name: str):
+        prompt = f"""
+        Grade this student answer based on the rubric.
+        Question: {question} | Student Answer: {student_answer} | Rubric: {rubric}
+        Return ONLY valid JSON format.
+        Schema: {{"score": 85, "feedback": "...", "areas_for_improvement": ["...", "..."]}}
+        """
+        response = client.models.generate_content(model=model_name, contents=prompt)
+        
+        # --- TRACKING ---
+        db = SessionLocal()
+        try:
+            log_gemini_usage(db, response, client_name, user_email, "Faculty Dashboard", "Auto Correct")
+        finally:
+            db.close()
+            
+        return response.text.replace("```json", "").replace("```", "").strip()
 
-@router.post("/translate")
-async def translate_script(req: TranslationRequest):
-    try:
-        return {"status": "success", "translated_text": faculty_controller.translate_text(req.text, req.target_language)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    def generate_teacher_alert(self, alert_type: str, details: dict, user_email: str, client_name: str):
+        prompt = f"Draft a short, professional alert to a teacher regarding {alert_type}. Details: {details}"
+        response = client.models.generate_content(model=model_name, contents=prompt)
+        
+        # --- TRACKING ---
+        db = SessionLocal()
+        try:
+            log_gemini_usage(db, response, client_name, user_email, "Faculty Dashboard", "Generate Alert")
+        finally:
+            db.close()
+            
+        return response.text.strip()
 
-@router.post("/text-to-voice")
-async def text_to_voice(req: TTSRequest):
-    try:
-        return {"status": "success", "audio_base64": faculty_controller.generate_speech(req.text, req.language)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/voice-to-text")
-async def voice_to_text(file: UploadFile = File(...), language: str = Form("English")):
-    try:
-        audio_bytes = await file.read()
-        return {"status": "success", "transcription": faculty_controller.process_audio_to_text(audio_bytes, language)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/audio-translator")
-async def audio_translator(
-    file: UploadFile = File(...), 
-    source_language: str = Form("English"), 
-    target_language: str = Form(...)
-):
-    try:
-        audio_bytes = await file.read()
-        return {"status": "success", "data": faculty_controller.audio_language_translator(audio_bytes, source_language, target_language)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/generate-material")
-async def generate_material(req: MaterialRequest):
-    try:
-        material_str = faculty_controller.generate_teaching_material(req.topic, req.grade_level)
-        return {"status": "success", "teaching_material": json.loads(material_str)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/generate-exam")
-async def generate_exam(req: QuestionPaperRequest):
-    try:
-        exam_str = faculty_controller.generate_question_paper(req.topic, req.difficulty, req.format_type, req.num_questions)
-        return {"status": "success", "question_paper": json.loads(exam_str)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/auto-correct")
-async def auto_correct(req: AutoCorrectRequest):
-    try:
-        feedback_str = faculty_controller.auto_correct_answer(req.question, req.student_answer, req.rubric)
-        return {"status": "success", "grading_feedback": json.loads(feedback_str)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/alerts")
-async def generate_alert(req: AlertRequest):
-    try:
-        alert = faculty_controller.generate_teacher_alert(req.alert_type, req.details)
-        return {"status": "success", "alert_message": alert}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/assess")
-async def evaluate_performance(req: AssessmentRequest):
-    try:
-        assessment_str = faculty_controller.evaluate_performance(req.performance_data, req.scope_description)
-        return {"status": "success", "assessment_report": json.loads(assessment_str)}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    def evaluate_performance(self, performance_data: dict, scope_description: str, user_email: str, client_name: str):
+        prompt = f"""
+        Evaluate this classroom performance data ({scope_description}): {performance_data}
+        Return ONLY valid JSON format.
+        Schema: {{"scope": "...", "overall_score": 90, "strengths": ["..."], "weaknesses": ["..."], "recommendation": "..."}}
+        """
+        response = client.models.generate_content(model=model_name, contents=prompt)
+        
+        # --- TRACKING ---
+        db = SessionLocal()
+        try:
+            log_gemini_usage(db, response, client_name, user_email, "Faculty Dashboard", "Evaluate Performance")
+        finally:
+            db.close()
+            
+        return response.text.replace("```json", "").replace("```", "").strip()

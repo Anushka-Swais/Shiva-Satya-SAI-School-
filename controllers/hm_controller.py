@@ -2,13 +2,17 @@ import json
 from controllers.admin_controller import AdminAIController
 from config.ai_config import client, model_name
 
+# --- NEW TRACKING IMPORTS ---
+from config.database import SessionLocal
+from utils.ai_tracker import log_gemini_usage
+
 class HMAIController(AdminAIController):
     def __init__(self):
         # Inherits the Google Cloud Voice TTS/STT clients and translation from AdminAIController
         super().__init__()
 
-    # --- 4. Assessment of students (per student, per subject, or all subjects) ---
-    def assess_student(self, student_data: dict) -> str:
+    # --- 4. Assessment of students (UPDATED WITH TRACKING) ---
+    def assess_student(self, student_data: dict, user_email: str, client_name: str) -> str:
         prompt = f"""
         Act as an expert Head Master and Academic Analyst. Analyze the following student performance data. 
         Provide a comprehensive, encouraging, but objective assessment report.
@@ -27,10 +31,26 @@ class HMAIController(AdminAIController):
         {student_data}
         """
         response = client.models.generate_content(model=model_name, contents=prompt)
+        
+        # --- TRACKING LOGIC ---
+        db = SessionLocal()
+        try:
+            log_gemini_usage(
+                db=db,
+                response=response,
+                client_name=client_name,
+                user_email=user_email,
+                module_name="HM Dashboard",
+                feature_name="Assess Student"
+            )
+        finally:
+            db.close()
+        # ----------------------
+
         return response.text.replace("```json", "").replace("```", "").strip()
 
-    # --- 5. Assessment of classroom (per subject or overall) ---
-    def assess_classroom(self, classroom_data: dict) -> str:
+    # --- 5. Assessment of classroom (UPDATED WITH TRACKING) ---
+    def assess_classroom(self, classroom_data: dict, user_email: str, client_name: str) -> str:
         prompt = f"""
         Act as an expert Head Master and Academic Analyst. Analyze the following macro-level classroom performance data.
         Identify specific subjects where the class excels and subjects that require pedagogical attention or teacher intervention.
@@ -49,4 +69,20 @@ class HMAIController(AdminAIController):
         {classroom_data}
         """
         response = client.models.generate_content(model=model_name, contents=prompt)
+        
+        # --- TRACKING LOGIC ---
+        db = SessionLocal()
+        try:
+            log_gemini_usage(
+                db=db,
+                response=response,
+                client_name=client_name,
+                user_email=user_email,
+                module_name="HM Dashboard",
+                feature_name="Assess Classroom"
+            )
+        finally:
+            db.close()
+        # ----------------------
+
         return response.text.replace("```json", "").replace("```", "").strip()

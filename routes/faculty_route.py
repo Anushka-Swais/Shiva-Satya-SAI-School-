@@ -1,66 +1,139 @@
 import json
+from fastapi import APIRouter, File, UploadFile, HTTPException, Form
+from pydantic import BaseModel
+from controllers.faculty_controller import FacultyAIController
 
-class FacultyAIController:
-    def __init__(self):
-        pass
+router = APIRouter()
+faculty_controller = FacultyAIController()
 
-    # --- Core Translation & Voice Methods ---
-    def translate_text(self, text: str, target_language: str):
-        # AI logic for translation goes here
-        return f"Translated '{text}' to {target_language}"
+# --- Schemas (Updated with Tracking Fields) ---
+class TranslationRequest(BaseModel):
+    text: str
+    target_language: str
+    user_email: str
+    client_name: str = "SSS"
 
-    def generate_speech(self, text: str, language: str):
-        # AI TTS logic goes here
-        return "base64_audio_string_mock"
+class TTSRequest(BaseModel):
+    text: str
+    language: str = "English"
+    user_email: str
+    client_name: str = "SSS"
 
-    def process_audio_to_text(self, audio_bytes, language: str):
-        # AI STT logic goes here
-        return f"Transcribed text in {language}"
+class MaterialRequest(BaseModel):
+    topic: str
+    grade_level: str
+    user_email: str
+    client_name: str = "SSS"
 
-    def audio_language_translator(self, audio_bytes, source_language: str, target_language: str):
-        # AI Audio translation logic
-        return {"original_text": "Audio text", "translated_text": f"Translated to {target_language}"}
+class QuestionPaperRequest(BaseModel):
+    topic: str
+    difficulty: str
+    format_type: str
+    num_questions: int
+    user_email: str
+    client_name: str = "SSS"
 
-    # --- Faculty Specific AI Methods ---
-    def generate_teaching_material(self, topic: str, grade_level: str):
-        # Generates strict JSON for the frontend lesson planner
-        data = {
-            "topic": topic,
-            "grade_level": grade_level,
-            "material": f"AI generated lesson plan for {topic}.",
-            "activities": ["Introduction", "Interactive Session", "Summary"]
-        }
-        return json.dumps(data)
+class AutoCorrectRequest(BaseModel):
+    question: str
+    student_answer: str
+    rubric: str
+    user_email: str
+    client_name: str = "SSS"
 
-    def generate_question_paper(self, topic: str, difficulty: str, format_type: str, num_questions: int):
-        # Generates strict JSON for the exam builder
-        data = {
-            "topic": topic,
-            "difficulty": difficulty,
-            "format": format_type,
-            "questions": [f"Sample {format_type} question {i+1} about {topic}" for i in range(num_questions)]
-        }
-        return json.dumps(data)
+class AlertRequest(BaseModel):
+    alert_type: str 
+    details: dict 
+    user_email: str
+    client_name: str = "SSS"
 
-    def auto_correct_answer(self, question: str, student_answer: str, rubric: str):
-        # Generates strict JSON for the grading interface
-        data = {
-            "score": 85,
-            "feedback": "Good understanding, but needs more detail.",
-            "areas_for_improvement": ["Elaborate on the main concept based on the rubric."]
-        }
-        return json.dumps(data)
+class AssessmentRequest(BaseModel):
+    scope_description: str 
+    performance_data: dict
+    user_email: str
+    client_name: str = "SSS"
 
-    def generate_teacher_alert(self, alert_type: str, details: dict):
-        return f"Alert [{alert_type}]: Please review the pending items for your class."
+# --- Endpoints ---
 
-    def evaluate_performance(self, performance_data: dict, scope_description: str):
-        # Generates strict JSON for the student/classroom performance charts
-        data = {
-            "scope": scope_description,
-            "overall_score": 90,
-            "strengths": ["Consistent participation", "High quiz scores"],
-            "weaknesses": ["Needs help with advanced topics"],
-            "recommendation": "Assign peer group study."
-        }
-        return json.dumps(data)
+@router.post("/translate")
+async def translate_script(req: TranslationRequest):
+    try:
+        translated = faculty_controller.translate_text(req.text, req.target_language, req.user_email, req.client_name)
+        return {"status": "success", "translated_text": translated}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/text-to-voice")
+async def text_to_voice(req: TTSRequest):
+    try:
+        # Note: Usually no Gemini tokens used here, but keeping API payload consistent
+        return {"status": "success", "audio_base64": faculty_controller.generate_speech(req.text, req.language)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/voice-to-text")
+async def voice_to_text(
+    file: UploadFile = File(...), 
+    language: str = Form("English"),
+    user_email: str = Form(...),
+    client_name: str = Form("SSS")
+):
+    try:
+        audio_bytes = await file.read()
+        return {"status": "success", "transcription": faculty_controller.process_audio_to_text(audio_bytes, language)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/audio-translator")
+async def audio_translator(
+    file: UploadFile = File(...), 
+    source_language: str = Form("English"), 
+    target_language: str = Form(...),
+    user_email: str = Form(...),
+    client_name: str = Form("SSS")
+):
+    try:
+        audio_bytes = await file.read()
+        result = faculty_controller.audio_language_translator(audio_bytes, source_language, target_language, user_email, client_name)
+        return {"status": "success", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/generate-material")
+async def generate_material(req: MaterialRequest):
+    try:
+        material_str = faculty_controller.generate_teaching_material(req.topic, req.grade_level, req.user_email, req.client_name)
+        return {"status": "success", "teaching_material": json.loads(material_str)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/generate-exam")
+async def generate_exam(req: QuestionPaperRequest):
+    try:
+        exam_str = faculty_controller.generate_question_paper(req.topic, req.difficulty, req.format_type, req.num_questions, req.user_email, req.client_name)
+        return {"status": "success", "question_paper": json.loads(exam_str)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/auto-correct")
+async def auto_correct(req: AutoCorrectRequest):
+    try:
+        feedback_str = faculty_controller.auto_correct_answer(req.question, req.student_answer, req.rubric, req.user_email, req.client_name)
+        return {"status": "success", "grading_feedback": json.loads(feedback_str)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/alerts")
+async def generate_alert(req: AlertRequest):
+    try:
+        alert = faculty_controller.generate_teacher_alert(req.alert_type, req.details, req.user_email, req.client_name)
+        return {"status": "success", "alert_message": alert}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/assess")
+async def evaluate_performance(req: AssessmentRequest):
+    try:
+        assessment_str = faculty_controller.evaluate_performance(req.performance_data, req.scope_description, req.user_email, req.client_name)
+        return {"status": "success", "assessment_report": json.loads(assessment_str)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
