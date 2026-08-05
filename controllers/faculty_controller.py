@@ -161,3 +161,61 @@ class FacultyAIController:
             db.close()
             
         return response.text.replace("```json", "").replace("```", "").strip()
+
+        # --- Competitive Exam Prep Features ---
+
+    def get_competitive_exam_structure(self, exam_type: str, class_level: str, user_email: str, client_name: str):
+        """
+        Dynamically fetches the subjects and topics based on the selected exam and class.
+        Use this to populate your frontend dropdowns!
+        """
+        prompt = f"""
+        You are an expert curriculum designer for Indian competitive exams.
+        A student in Class {class_level} wants to start foundation preparation for the '{exam_type}' exam.
+        List the required subjects for this exam. For each subject, provide a list of foundational topics appropriate for a Class {class_level} cognitive level.
+        
+        Return ONLY valid JSON format. Do not use markdown blocks.
+        Schema: {{"exam": "{exam_type}", "class": "{class_level}", "subjects": [{{"subject_name": "Biology", "topics": ["Cell Structure", "Tissues"]}}]}}
+        """
+        response = client.models.generate_content(model=model_name, contents=prompt)
+        
+        db = SessionLocal()
+        try:
+            log_gemini_usage(db, response, client_name, user_email, "Faculty Dashboard", "Fetch Exam Structure")
+        finally:
+            db.close()
+            
+        return response.text.replace("```json", "").replace("```", "").strip()
+
+    def generate_competitive_content(self, exam_type: str, class_level: str, subject: str, topic: str, content_type: str, user_email: str, client_name: str):
+        """
+        Generates the actual Study Material or Quiz based on the specific exam, class, subject, and topic.
+        content_type should be either 'Quiz' or 'Study Material'.
+        """
+        prompt = f"""
+        Act as an expert coaching instructor for the {exam_type} exam in India.
+        Create '{content_type}' for a student in Class {class_level} focusing on the subject '{subject}' and the topic '{topic}'.
+        Since the student is in Class {class_level}, ensure the difficulty is at a 'Foundation' level—building core concepts that will help them later in their actual {exam_type} exam.
+
+        Return ONLY valid JSON format. Do not use markdown blocks.
+        """
+        
+        # Adjusting the required JSON schema based on what the user requested (Quiz vs Material)
+        if content_type.lower() == "quiz":
+            prompt += f"""
+            Schema: {{"exam": "{exam_type}", "topic": "{topic}", "questions": [{{"question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "correct_answer": "...", "explanation": "..."}}]}}
+            """
+        else:
+            prompt += f"""
+            Schema: {{"exam": "{exam_type}", "topic": "{topic}", "core_concepts": ["...", "..."], "detailed_notes": "...", "important_formulas_or_facts": ["...", "..."]}}
+            """
+            
+        response = client.models.generate_content(model=model_name, contents=prompt)
+        
+        db = SessionLocal()
+        try:
+            log_gemini_usage(db, response, client_name, user_email, "Faculty Dashboard", f"Generate Competitive {content_type}")
+        finally:
+            db.close()
+            
+        return response.text.replace("```json", "").replace("```", "").strip()

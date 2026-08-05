@@ -52,6 +52,21 @@ class AssessmentRequest(BaseModel):
     user_email: str
     client_name: str = "SSS"
 
+class CompetitiveStructureRequest(BaseModel):
+    exam_type: str
+    class_level: str
+    user_email: str
+    client_name: str = "SSS"
+
+class CompetitiveContentRequest(BaseModel):
+    exam_type: str
+    class_level: str
+    subject: str
+    topic: str
+    content_type: str # 'Quiz' or 'Study Material'
+    user_email: str
+    client_name: str = "SSS"
+
 # --- Endpoints ---
 
 @router.post("/translate")
@@ -135,5 +150,25 @@ async def evaluate_performance(req: AssessmentRequest):
     try:
         assessment_str = faculty_controller.evaluate_performance(req.performance_data, req.scope_description, req.user_email, req.client_name)
         return {"status": "success", "assessment_report": json.loads(assessment_str)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/competitive/structure")
+async def get_competitive_structure(req: CompetitiveStructureRequest):
+    try:
+        structure_str = faculty_controller.get_competitive_exam_structure(
+            req.exam_type, req.class_level, req.user_email, req.client_name
+        )
+        return {"status": "success", "exam_structure": json.loads(structure_str)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/competitive/generate")
+async def generate_competitive_content(req: CompetitiveContentRequest):
+    try:
+        content_str = faculty_controller.generate_competitive_content(
+            req.exam_type, req.class_level, req.subject, req.topic, req.content_type, req.user_email, req.client_name
+        )
+        return {"status": "success", "competitive_content": json.loads(content_str)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

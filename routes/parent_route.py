@@ -55,16 +55,15 @@ async def translate_script(req: TranslationRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 5. Text to Voice (Inherited logic)
+# 2. Text to Voice (Inherited logic)
 @router.post("/text-to-voice")
 async def text_to_voice(req: TTSRequest):
     try:
-        # TTS doesn't consume Gemini tokens, but the schema keeps the frontend API consistent
         return {"status": "success", "audio_base64": parent_ai.generate_speech(req.text, req.language)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 5. Voice to Text (Inherited logic)
+# 3. Voice to Text (Inherited logic)
 @router.post("/voice-to-text")
 async def voice_to_text(
     file: UploadFile = File(...), 
@@ -78,7 +77,7 @@ async def voice_to_text(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 2. Audio language translator (Inherited logic - Now passes tracking data)
+# 4. Audio language translator (Inherited logic - Now passes tracking data)
 @router.post("/audio-translator")
 async def audio_translator(
     file: UploadFile = File(...), 
@@ -100,8 +99,7 @@ async def audio_translator(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-
-# 3. Student assessment per subject and per test
+# 5. Student assessment per subject and per test
 @router.post("/assessment-summary")
 async def get_assessment_summary(req: AssessmentSummaryRequest):
     try:
@@ -115,11 +113,13 @@ async def get_assessment_summary(req: AssessmentSummaryRequest):
             user_email=req.user_email,
             client_name=req.client_name
         )
-        return {"status": "success", "summary": json.loads(summary_str)}
+        parsed_data = json.loads(summary_str)
+        # Unpacks summary_title, performance_breakdown, encouraging_feedback, and home_support_tips directly at the root level
+        return {"status": "success", **parsed_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 4. Assignment due date alerts
+# 6. Assignment due date alerts
 @router.post("/due-date-alert")
 async def get_due_date_alert(req: DueDateAlertRequest):
     try:
@@ -132,6 +132,7 @@ async def get_due_date_alert(req: DueDateAlertRequest):
             user_email=req.user_email,
             client_name=req.client_name
         )
-        return {"status": "success", "alert_data": json.loads(alert_str)}
+        parsed_alert = json.loads(alert_str)
+        return {"status": "success", **parsed_alert}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
