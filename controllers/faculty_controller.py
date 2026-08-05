@@ -20,7 +20,7 @@ class FacultyAIController:
         self.tts_client = texttospeech.TextToSpeechClient(client_options=client_options)
         self.stt_client = speech.SpeechClient(client_options=client_options)
 
-        # 2. Premium Language mapping for Wavenet & Neural2 Google TTS voices
+        # 2. Premium Language mapping for Standard & Neural2 Google TTS voices
         # Fixed regional voices from Wavenet to Standard (Wavenet voices are not supported for these language codes)
         self.advanced_language_map = {
             "english": {"code": "en-IN", "voice": "en-IN-Neural2-B"},
@@ -72,10 +72,9 @@ class FacultyAIController:
         voice_config = self._get_voice_config(language)
         audio = speech.RecognitionAudio(content=audio_bytes)
         
-        # Updated to handle standard web browser audio recordings (WEBM)
+        # We removed sample_rate_hertz so Google can automatically detect it from the WebM header!
         config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
-            sample_rate_hertz=48000, 
             language_code=voice_config["code"]
         )
         
@@ -236,4 +235,3 @@ class FacultyAIController:
             db.close()
             
         return response.text.replace("```json", "").replace("```", "").strip()
-    
