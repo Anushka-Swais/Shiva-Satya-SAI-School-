@@ -86,3 +86,38 @@ class HMAIController(AdminAIController):
         # ----------------------
 
         return response.text.replace("```json", "").replace("```", "").strip()
+
+    # --- 6. Assessment of teacher (NEW FEATURE WITH TRACKING) ---
+    def assess_teacher(self, teacher_data: dict, user_email: str, client_name: str) -> str:
+        prompt = f"""
+        Act as an expert Head Master. Analyze the following teacher performance and classroom management data.
+        Provide a comprehensive, objective assessment report for this specific teacher. 
+        Evaluate their effectiveness based on student outcomes, subject mastery, assignment completion rates, and any provided feedback.
+        Identify areas of excellence and suggest actionable pedagogical improvements if necessary.
+
+        CRITICAL INSTRUCTIONS: 
+        - Write this as a clean, plain-text professional report. 
+        - Do NOT output raw JSON.
+        - Do NOT use markdown code blocks (like ```).
+
+        Teacher Data:
+        {teacher_data}
+        """
+        response = client.models.generate_content(model=model_name, contents=prompt)
+
+        # --- TRACKING LOGIC ---
+        db = SessionLocal()
+        try:
+            log_gemini_usage(
+                db=db,
+                response=response,
+                client_name=client_name,
+                user_email=user_email,
+                module_name="HM Dashboard",
+                feature_name="Assess Teacher"
+            )
+        finally:
+            db.close()
+        # ----------------------
+
+        return response.text.replace("```json", "").replace("```", "").strip()

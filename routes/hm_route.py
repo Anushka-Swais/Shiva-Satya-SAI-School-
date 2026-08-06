@@ -31,6 +31,12 @@ class ClassroomAssessmentRequest(BaseModel):
     user_email: str
     client_name: str = "SSS"
 
+class TeacherAssessmentRequest(BaseModel):
+    teacher_name: str
+    metrics: dict
+    user_email: str
+    client_name: str = "SSS"
+
 
 # --- Endpoints ---
 
@@ -106,5 +112,19 @@ async def generate_classroom_assessment(req: ClassroomAssessmentRequest):
         
         assessment_str = hm_controller.assess_classroom(data, user_email, client_name)
         return {"status": "success", "assessment_report": json.loads(assessment_str)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 6. Assessment of teacher
+@router.post("/assess/teacher")
+async def generate_teacher_assessment(req: TeacherAssessmentRequest):
+    try:
+        # Separate the tracking credentials from the actual payload data
+        data = req.model_dump()
+        user_email = data.pop("user_email")
+        client_name = data.pop("client_name")
+        
+        assessment_str = hm_controller.assess_teacher(data, user_email, client_name)
+        return {"status": "success", "assessment_report": assessment_str}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
