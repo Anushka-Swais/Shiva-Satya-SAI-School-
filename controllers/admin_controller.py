@@ -48,8 +48,12 @@ class AdminAIController:
         # SUPER COMPRESSED PROMPT: Fewer words for the AI to read = much faster response time.
         prompt = f"Translate to {target_language} (use native script only). Return ONLY the translation. Text: {text}"
         
-        # Uses the dynamic model_name from config.ai_config
-        response = client.models.generate_content(model=model_name, contents=prompt)
+        # 🚀 ZERO TEMPERATURE FIX: Forces Gemini to translate instantly without "thinking"
+        response = client.models.generate_content(
+            model=model_name, 
+            contents=prompt,
+            config={"temperature": 0.0}
+        )
         
         # --- TRACKING LOGIC ---
         db = SessionLocal()
