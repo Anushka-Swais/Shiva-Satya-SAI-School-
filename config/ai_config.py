@@ -10,7 +10,7 @@ if not GEMINI_API_KEY:
 # Initialize the global Gemini client
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# Pull the specific model name from your .env file (defaulting to flash if not found)
-model_name = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+# Fixing the model directly to gemini-3.5-flash for the entire backend
+model_name = "gemini-3.5-flash"
 
 print(f"✅ Gemini AI Initialized successfully using model: {model_name}")

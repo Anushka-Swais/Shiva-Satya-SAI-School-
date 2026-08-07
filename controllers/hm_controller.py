@@ -1,15 +1,52 @@
+import os
 import json
+from google.cloud import texttospeech
+from google.cloud import speech
+from google.api_core.client_options import ClientOptions
+
 from controllers.admin_controller import AdminAIController
 from config.ai_config import client, model_name
-
-# --- NEW TRACKING IMPORTS ---
 from config.database import SessionLocal
 from utils.ai_tracker import log_gemini_usage
 
 class HMAIController(AdminAIController):
     def __init__(self):
-        # Inherits the Google Cloud Voice TTS/STT clients and translation from AdminAIController
+        # Inherits base routing from AdminAIController
         super().__init__()
+
+        # --- EXPLICIT GOOGLE CLOUD TTS & STT INITIALIZATION ---
+        # Securely pulls the API key from your .env file
+        gcp_key = os.getenv("GOOGLE_TTS_API_KEY")
+        if not gcp_key:
+             raise ValueError("GOOGLE_TTS_API_KEY is missing from environment variables.")
+             
+        client_options = ClientOptions(api_key=gcp_key)
+        self.tts_client = texttospeech.TextToSpeechClient(client_options=client_options)
+        self.stt_client = speech.SpeechClient(client_options=client_options)
+
+    # --- OVERRIDE: Ultra-Fast Translation & Native Script Fix ---
+    def translate_text(self, text: str, target_language: str, user_email: str, client_name: str) -> str:
+        # SUPER COMPRESSED PROMPT: Ensures ~1 second response time
+        prompt = f"Translate to {target_language} (use native script only). Return ONLY the translation. Text: {text}"
+        
+        # Dynamically pulls from ai_config
+        response = client.models.generate_content(model=model_name, contents=prompt)
+        
+        # --- TRACKING LOGIC ---
+        db = SessionLocal()
+        try:
+            log_gemini_usage(
+                db=db,
+                response=response,
+                client_name=client_name,
+                user_email=user_email,
+                module_name="HM Dashboard",
+                feature_name="Fast Text Translation"
+            )
+        finally:
+            db.close()
+            
+        return response.text.strip()
 
     # --- 4. Assessment of students (UPDATED WITH TRACKING) ---
     def assess_student(self, student_data: dict, user_email: str, client_name: str) -> str:

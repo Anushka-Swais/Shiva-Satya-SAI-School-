@@ -41,10 +41,12 @@ class FacultyAIController:
         # Defaults to Indian English Neural2 if language is not found
         return self.advanced_language_map.get(lang_lower, {"code": "en-IN", "voice": "en-IN-Neural2-A"})
 
-    # --- REAL: Language script translator ---
+    # --- REAL: Language script translator (OPTIMIZED FOR HIGH SPEED) ---
     def translate_text(self, text: str, target_language: str, user_email: str, client_name: str) -> str:
-        # Enforce native script output
-        prompt = f"You are an expert linguistic translator. Translate the following text natively into {target_language}. You MUST output the text in the native script/characters of {target_language}. Provide only the precise translation without any markdown formatting or conversational filler:\n\n{text}"
+        # SUPER COMPRESSED PROMPT: Fewer words for the AI to read = much faster response time.
+        prompt = f"Translate to {target_language} (use native script only). Return ONLY the translation. Text: {text}"
+        
+        # Uses the dynamic model_name from config.ai_config
         response = client.models.generate_content(model=model_name, contents=prompt)
         
         # --- TRACKING ---
@@ -99,7 +101,7 @@ class FacultyAIController:
         return {"original_text": original_text, "translated_text": translated_text, "audio_base64": translated_audio_base64}
 
 
-    # --- Core Faculty Specific AI Methods (Unchanged) ---
+    # --- Core Faculty Specific AI Methods ---
     
     def generate_teaching_material(self, topic: str, grade_level: str, user_email: str, client_name: str):
         prompt = f"""

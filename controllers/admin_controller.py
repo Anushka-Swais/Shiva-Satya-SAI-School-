@@ -22,19 +22,20 @@ class AdminAIController:
         self.tts_client = texttospeech.TextToSpeechClient(client_options=client_options)
         self.stt_client = speech.SpeechClient(client_options=client_options)
 
-        # Fully upgraded language mapping for premium Wavenet & Neural2 Google TTS voices
+        # Fully upgraded language mapping for premium Standard & Neural2 Google TTS voices
+        # Fixed regional voices from Wavenet to Standard (Wavenet voices are not supported for these language codes)
         self.advanced_language_map = {
             "english": {"code": "en-IN", "voice": "en-IN-Neural2-B"},
             "hindi": {"code": "hi-IN", "voice": "hi-IN-Neural2-A"},
-            "telugu": {"code": "te-IN", "voice": "te-IN-Wavenet-A"},
-            "kannada": {"code": "kn-IN", "voice": "kn-IN-Wavenet-A"},
-            "tamil": {"code": "ta-IN", "voice": "ta-IN-Wavenet-A"},
-            "malayalam": {"code": "ml-IN", "voice": "ml-IN-Wavenet-A"},
-            "bengali": {"code": "bn-IN", "voice": "bn-IN-Wavenet-A"},
-            "marathi": {"code": "mr-IN", "voice": "mr-IN-Wavenet-A"},
-            "oriya": {"code": "or-IN", "voice": "or-IN-Wavenet-A"},
-            "gujarati": {"code": "gu-IN", "voice": "gu-IN-Wavenet-A"},
-            "gujrati": {"code": "gu-IN", "voice": "gu-IN-Wavenet-A"}
+            "telugu": {"code": "te-IN", "voice": "te-IN-Standard-A"},
+            "kannada": {"code": "kn-IN", "voice": "kn-IN-Standard-A"},
+            "tamil": {"code": "ta-IN", "voice": "ta-IN-Standard-A"},
+            "malayalam": {"code": "ml-IN", "voice": "ml-IN-Standard-A"},
+            "bengali": {"code": "bn-IN", "voice": "bn-IN-Standard-A"},
+            "marathi": {"code": "mr-IN", "voice": "mr-IN-Standard-A"},
+            "oriya": {"code": "or-IN", "voice": "or-IN-Standard-A"},
+            "gujarati": {"code": "gu-IN", "voice": "gu-IN-Standard-A"},
+            "gujrati": {"code": "gu-IN", "voice": "gu-IN-Standard-A"}
         }
 
     def _get_voice_config(self, language_name: str) -> dict:
@@ -42,10 +43,12 @@ class AdminAIController:
         # Defaults to Indian English Neural2 if language is not found
         return self.advanced_language_map.get(lang_lower, {"code": "en-IN", "voice": "en-IN-Neural2-A"})
 
-    # --- 1. Language script translator (UPDATED WITH TRACKING) ---
+    # --- 1. Language script translator (OPTIMIZED FOR HIGH SPEED) ---
     def translate_text(self, text: str, target_language: str, user_email: str, client_name: str) -> str:
-        # Strictly enforce native script output to prevent defaulting to English
-        prompt = f"You are an expert linguistic translator. Translate the following text natively into {target_language}. You MUST output the text in the native script/characters of {target_language}. Provide only the precise translation without any markdown formatting or conversational filler:\n\n{text}"
+        # SUPER COMPRESSED PROMPT: Fewer words for the AI to read = much faster response time.
+        prompt = f"Translate to {target_language} (use native script only). Return ONLY the translation. Text: {text}"
+        
+        # Uses the dynamic model_name from config.ai_config
         response = client.models.generate_content(model=model_name, contents=prompt)
         
         # --- TRACKING LOGIC ---
@@ -57,7 +60,7 @@ class AdminAIController:
                 client_name=client_name,
                 user_email=user_email,
                 module_name="Admin Dashboard",
-                feature_name="Language Script Translator"
+                feature_name="Fast Text Translation"
             )
         finally:
             db.close()
@@ -84,20 +87,32 @@ class AdminAIController:
         response = self.tts_client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
         return base64.b64encode(response.audio_content).decode("utf-8")
 
-    # --- 3. Voice to Text ---
+    # --- 3. Voice to Text (UPDATED TO WEBM_OPUS) ---
     def process_audio_to_text(self, audio_bytes: bytes, language: str = "English") -> str:
         voice_config = self._get_voice_config(language)
         audio = speech.RecognitionAudio(content=audio_bytes)
+        
+        # Updated to WEBM_OPUS so it automatically handles the frontend WebM headers
         config = speech.RecognitionConfig(
-            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
+            encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
             language_code=voice_config["code"],
         )
         response = self.stt_client.recognize(config=config, audio=audio)
+        
+        # Safety check if Google returns an empty result
+        if not response.results:
+            return ""
+            
         return " ".join([result.alternatives[0].transcript for result in response.results])
 
-    # --- 2. Audio language translator (UPDATED TO PASS TRACKING CREDENTIALS) ---
+    # --- 2. Audio language translator ---
     def audio_language_translator(self, audio_bytes: bytes, source_language: str, target_language: str, user_email: str, client_name: str) -> dict:
         original_text = self.process_audio_to_text(audio_bytes, source_language)
+        
+        # If the audio couldn't be processed or is empty
+        if not original_text.strip():
+            return {"original_text": "", "translated_text": "Please provide valid audio to translate.", "audio_base64": ""}
+            
         # Pass the credentials down to translate_text where Gemini is called!
         translated_text = self.translate_text(original_text, target_language, user_email, client_name)
         translated_audio_base64 = self.generate_speech(translated_text, target_language)

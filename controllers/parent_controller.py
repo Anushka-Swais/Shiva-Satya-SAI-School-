@@ -24,20 +24,13 @@ class ParentAIController(AdminAIController):
         self.tts_client = texttospeech.TextToSpeechClient(client_options=client_options)
         self.stt_client = speech.SpeechClient(client_options=client_options)
 
-    # --- OVERRIDE: Fast Translation & Telugu Quality Fix ---
+    # --- OVERRIDE: Ultra-Fast Translation & Telugu Quality Fix ---
     def translate_text(self, text: str, target_language: str, user_email: str, client_name: str) -> str:
-        """
-        Overridden to use gemini-3.5-flash for lightning-fast responses.
-        Also includes strict enforcement for native scripts (like Telugu).
-        """
-        prompt = f"""Translate the following text into {target_language}. 
-        CRITICAL: You MUST use the native script of {target_language} (e.g., if Telugu, use valid తెలుగు characters, NOT English alphabet transliteration).
-        Return ONLY the translated text. Do not add quotes, notes, or markdown.
+        # SUPER COMPRESSED PROMPT: Fewer words for the AI to read = much faster response time.
+        prompt = f"Translate to {target_language} (use native script only). Return ONLY the translation. Text: {text}"
         
-        Text: {text}"""
-        
-        # Explicitly using gemini-3.5-flash as requested
-        response = client.models.generate_content(model="gemini-3.5-flash", contents=prompt)
+        # REMOVED HARDCODING: Now pulls the model dynamically from config.ai_config!
+        response = client.models.generate_content(model=model_name, contents=prompt)
         
         # --- TRACKING LOGIC ---
         db = SessionLocal()
