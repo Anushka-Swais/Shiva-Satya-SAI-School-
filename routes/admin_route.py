@@ -1,4 +1,5 @@
 import time
+from typing import Union
 from fastapi import APIRouter, File, UploadFile, HTTPException, Form
 from pydantic import BaseModel
 from controllers.admin_controller import AdminAIController
@@ -8,7 +9,8 @@ admin_controller = AdminAIController()
 
 # --- Schemas ---
 class TranslationRequest(BaseModel):
-    text: str
+    # 🚀 FIX: Now accepts a single string OR an array of strings for bulk translation!
+    text: Union[str, list[str]]
     target_language: str
     user_email: str
     client_name: str = "SSS"
@@ -37,7 +39,12 @@ def translate_script(req: TranslationRequest):
         
         # Stop Stopwatch
         execution_time = round(time.time() - start_time, 2)
-        print(f"⏱️ Admin Translation Backend Time: {execution_time} seconds")
+        
+        # Smart logging based on whether it was a bulk list or single string
+        if isinstance(req.text, list):
+            print(f"⏱️ Admin Bulk Translation Backend Time ({len(req.text)} items): {execution_time} seconds")
+        else:
+            print(f"⏱️ Admin Translation Backend Time: {execution_time} seconds")
         
         return {
             "status": "success", 

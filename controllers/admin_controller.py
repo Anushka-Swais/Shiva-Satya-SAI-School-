@@ -1,5 +1,7 @@
 import os
+import json
 import base64
+from typing import Union
 from google.cloud import texttospeech
 from google.cloud import speech
 from google.api_core.client_options import ClientOptions
@@ -23,7 +25,6 @@ class AdminAIController:
         self.stt_client = speech.SpeechClient(client_options=client_options)
 
         # Fully upgraded language mapping for premium Standard & Neural2 Google TTS voices
-        # Fixed regional voices from Wavenet to Standard (Wavenet voices are not supported for these language codes)
         self.advanced_language_map = {
             "english": {"code": "en-IN", "voice": "en-IN-Neural2-B"},
             "hindi": {"code": "hi-IN", "voice": "hi-IN-Neural2-A"},
@@ -43,12 +44,18 @@ class AdminAIController:
         # Defaults to Indian English Neural2 if language is not found
         return self.advanced_language_map.get(lang_lower, {"code": "en-IN", "voice": "en-IN-Neural2-A"})
 
-    # --- 1. Language script translator (OPTIMIZED FOR HIGH SPEED) ---
-    def translate_text(self, text: str, target_language: str, user_email: str, client_name: str) -> str:
-        # SUPER COMPRESSED PROMPT: Fewer words for the AI to read = much faster response time.
-        prompt = f"Translate to {target_language} (use native script only). Return ONLY the translation. Text: {text}"
+    # --- 1. Language script translator (DYNAMIC: Handles both Single String AND Bulk Arrays) ---
+    def translate_text(self, text: Union[str, list], target_language: str, user_email: str, client_name: str) -> Union[str, list]:
+        is_bulk = isinstance(text, list)
         
-        # 🚀 ZERO TEMPERATURE FIX: Forces Gemini to translate instantly without "thinking"
+        # Smart Prompting: Adapts based on what the frontend sent
+        if is_bulk:
+            text_payload = json.dumps(text)
+            prompt = f"Translate the following JSON array of strings to {target_language} (native script). Return ONLY a valid JSON array of strings in the exact same order. Do not use markdown blocks. Array: {text_payload}"
+        else:
+            prompt = f"Translate to {target_language} (use native script only). Return ONLY the translation. Text: {text}"
+        
+        # 🚀 ZERO TEMPERATURE FIX: Forces instant response
         response = client.models.generate_content(
             model=model_name, 
             contents=prompt,
@@ -64,13 +71,21 @@ class AdminAIController:
                 client_name=client_name,
                 user_email=user_email,
                 module_name="Admin Dashboard",
-                feature_name="Fast Text Translation"
+                feature_name="Bulk Text Translation" if is_bulk else "Fast Text Translation"
             )
         finally:
             db.close()
         # ----------------------
 
-        return response.text.strip()
+        # Smart Formatting: Adapts the return format based on what was requested
+        if is_bulk:
+            try:
+                clean_text = response.text.replace("```json", "").replace("```", "").strip()
+                return json.loads(clean_text)
+            except json.JSONDecodeError:
+                return ["Translation Error"] * len(text)
+        else:
+            return response.text.strip()
 
     # --- 3. Text to Voice (With Premium Accents & Clarity Fix) ---
     def generate_speech(self, text: str, language: str = "English") -> str:
@@ -96,14 +111,12 @@ class AdminAIController:
         voice_config = self._get_voice_config(language)
         audio = speech.RecognitionAudio(content=audio_bytes)
         
-        # Updated to WEBM_OPUS so it automatically handles the frontend WebM headers
         config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
             language_code=voice_config["code"],
         )
         response = self.stt_client.recognize(config=config, audio=audio)
         
-        # Safety check if Google returns an empty result
         if not response.results:
             return ""
             
@@ -113,11 +126,10 @@ class AdminAIController:
     def audio_language_translator(self, audio_bytes: bytes, source_language: str, target_language: str, user_email: str, client_name: str) -> dict:
         original_text = self.process_audio_to_text(audio_bytes, source_language)
         
-        # If the audio couldn't be processed or is empty
         if not original_text.strip():
             return {"original_text": "", "translated_text": "Please provide valid audio to translate.", "audio_base64": ""}
             
-        # Pass the credentials down to translate_text where Gemini is called!
+        # translate_text handles single strings seamlessly!
         translated_text = self.translate_text(original_text, target_language, user_email, client_name)
         translated_audio_base64 = self.generate_speech(translated_text, target_language)
         
