@@ -41,9 +41,9 @@ class DueDateAlertRequest(BaseModel):
 
 # --- Endpoints ---
 
-# 1. Language script translator (Inherited logic - Now passes tracking data)
+# 1. Language script translator (REMOVED ASYNC FOR THREADING)
 @router.post("/translate")
-async def translate_script(req: TranslationRequest):
+def translate_script(req: TranslationRequest):
     try:
         translated = parent_ai.translate_text(
             req.text, 
@@ -55,31 +55,32 @@ async def translate_script(req: TranslationRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 2. Text to Voice (Inherited logic)
+# 2. Text to Voice (REMOVED ASYNC FOR THREADING)
 @router.post("/text-to-voice")
-async def text_to_voice(req: TTSRequest):
+def text_to_voice(req: TTSRequest):
     try:
         return {"status": "success", "audio_base64": parent_ai.generate_speech(req.text, req.language)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 3. Voice to Text (Inherited logic)
+# 3. Voice to Text (REMOVED ASYNC FOR THREADING)
 @router.post("/voice-to-text")
-async def voice_to_text(
+def voice_to_text(
     file: UploadFile = File(...), 
     language: str = Form("English"),
     user_email: str = Form(...),
     client_name: str = Form("SSS")
 ):
     try:
-        audio_bytes = await file.read()
+        # Changed to synchronous read
+        audio_bytes = file.file.read() 
         return {"status": "success", "transcription": parent_ai.process_audio_to_text(audio_bytes, language)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 4. Audio language translator (Inherited logic - Now passes tracking data)
+# 4. Audio language translator (REMOVED ASYNC FOR THREADING)
 @router.post("/audio-translator")
-async def audio_translator(
+def audio_translator(
     file: UploadFile = File(...), 
     source_language: str = Form("English"), 
     target_language: str = Form(...),
@@ -87,7 +88,8 @@ async def audio_translator(
     client_name: str = Form("SSS")
 ):
     try:
-        audio_bytes = await file.read()
+        # Changed to synchronous read
+        audio_bytes = file.file.read()
         result = parent_ai.audio_language_translator(
             audio_bytes, 
             source_language, 
@@ -99,9 +101,9 @@ async def audio_translator(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 5. Student assessment per subject and per test
+# 5. Student assessment per subject and per test (REMOVED ASYNC FOR THREADING)
 @router.post("/assessment-summary")
-async def get_assessment_summary(req: AssessmentSummaryRequest):
+def get_assessment_summary(req: AssessmentSummaryRequest):
     try:
         summary_str = parent_ai.generate_assessment_summary(
             student_name=req.student_name, 
@@ -114,14 +116,13 @@ async def get_assessment_summary(req: AssessmentSummaryRequest):
             client_name=req.client_name
         )
         parsed_data = json.loads(summary_str)
-        # Unpacks summary_title, performance_breakdown, encouraging_feedback, and home_support_tips directly at the root level
         return {"status": "success", **parsed_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# 6. Assignment due date alerts
+# 6. Assignment due date alerts (REMOVED ASYNC FOR THREADING)
 @router.post("/due-date-alert")
-async def get_due_date_alert(req: DueDateAlertRequest):
+def get_due_date_alert(req: DueDateAlertRequest):
     try:
         alert_str = parent_ai.generate_due_date_alert(
             student_name=req.student_name, 
