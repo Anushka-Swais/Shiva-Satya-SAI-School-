@@ -40,6 +40,38 @@ class FacultyAIController:
         # Defaults to Indian English Neural2 if language is not found
         return self.advanced_language_map.get(lang_lower, {"code": "en-IN", "voice": "en-IN-Neural2-A"})
 
+    # --- PYTHON MATH HELPER TO PREVENT AI HALLUCINATIONS ---
+    def _calculate_mixed_distribution(self, total_marks: int) -> dict:
+        """Dynamically calculates question counts so the AI doesn't have to do math."""
+        dist = {"mcq": 0, "true_false": 0, "fill_in_the_blank": 0, "short_answer": 0, "long_answer": 0}
+        
+        # Fallback for very small marks
+        if total_marks < 5:
+            dist["mcq"] = total_marks
+            return dist
+            
+        remaining = total_marks
+        
+        # 1. Allocate ~40% of marks to Long Answers (4 marks each)
+        target_long = int(total_marks * 0.4) // 4
+        dist["long_answer"] = target_long
+        remaining -= (target_long * 4)
+        
+        # 2. Allocate ~30% of marks to Short Answers (2 marks each)
+        target_short = int(total_marks * 0.3) // 2
+        dist["short_answer"] = target_short
+        remaining -= (target_short * 2)
+        
+        # 3. Distribute all remaining marks evenly among 1-mark questions
+        cycle = ["mcq", "true_false", "fill_in_the_blank"]
+        idx = 0
+        while remaining > 0:
+            dist[cycle[idx % 3]] += 1
+            remaining -= 1
+            idx += 1
+            
+        return dist
+
     # --- REAL: Language script translator (OPTIMIZED FOR HIGH SPEED) ---
     def translate_text(self, text: str, target_language: str, user_email: str, client_name: str) -> str:
         prompt = f"Translate to {target_language} (use native script only). Return ONLY the translation. Text: {text}"
@@ -112,30 +144,30 @@ class FacultyAIController:
             
         return response.text.replace("```json", "").replace("```", "").strip()
 
-    # --- UPDATED: Question Paper Generator for Dynamic Marks and All 5 Question Types ---
+    # --- UPDATED: Bulletproof Question Paper Generator ---
     def generate_question_paper(self, topic: str, difficulty: str, format_type: str, num_questions: int, user_email: str, client_name: str, total_marks: int = 50):
         format_clean = format_type.lower().strip()
         
-        # 1. Mixed / All Types (Fully Dynamic based on total_marks)
+        # 1. Mixed / All Types (Fully Calculated in Python first)
         if format_clean in ["all", "all type", "all types", "mixed", "mixed type"]:
-            prompt = f"""
-            Act as an expert school exam setter.
-            Create a {difficulty} exam paper for '{topic}' totaling exactly {total_marks} marks.
+            dist = self._calculate_mixed_distribution(total_marks)
             
-            You MUST generate a mix of the following 5 question types and ensure the sum of their marks equals EXACTLY {total_marks}.
-            - 'mcq' (1 mark each)
-            - 'true_false' (1 mark each)
-            - 'fill_in_the_blank' (1 mark each)
-            - 'short_answer' (2 marks each, max 180 characters)
-            - 'long_answer' (4 marks each, max 2000 characters)
+            prompt = f"""
+            Act as an expert school exam setter. Create a {difficulty} exam on '{topic}'.
+            You MUST generate EXACTLY these question counts, placed in a single flat 'questions' array:
+            
+            - {dist['mcq']} questions of type "mcq" (1 mark each)
+            - {dist['true_false']} questions of type "true_false" (1 mark each)
+            - {dist['fill_in_the_blank']} questions of type "fill_in_the_blank" (1 mark each)
+            - {dist['short_answer']} questions of type "short_answer" (2 marks each, max 180 characters)
+            - {dist['long_answer']} questions of type "long_answer" (4 marks each, max 2000 characters)
 
-            Return ONLY valid JSON format without markdown blocks. Provide all questions in a single flat 'questions' array. Do NOT use nested sections.
-            Schema Example:
+            Return ONLY valid JSON format. Follow this exact schema for each type:
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
                 "total_marks": {total_marks},
-                "format": "All Types",
+                "format": "Mixed",
                 "questions": [
                     {{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "marks": 1, "answer": "..."}},
                     {{"q_num": 2, "type": "true_false", "question": "...", "options": ["True", "False"], "marks": 1, "answer": "..."}},
@@ -149,79 +181,53 @@ class FacultyAIController:
         # 2. True/False Only
         elif format_clean in ["true/false", "true false", "tf"]:
             prompt = f"""
-            Act as an expert school exam setter.
-            Create a {difficulty} exam paper for '{topic}' containing exactly {total_marks} True/False questions (1 mark each = {total_marks} total marks).
-
-            Return ONLY valid JSON format without markdown blocks.
+            Act as an expert school exam setter. Create a {difficulty} exam on '{topic}'.
+            Generate EXACTLY {total_marks} True/False questions (1 mark each).
+            Return ONLY valid JSON format.
             Schema:
             {{
-                "topic": "{topic}",
-                "difficulty": "{difficulty}",
-                "total_marks": {total_marks},
-                "format": "True/False",
-                "questions": [
-                    {{"q_num": 1, "type": "true_false", "question": "...", "options": ["True", "False"], "marks": 1, "answer": "..."}}
-                ]
+                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {total_marks}, "format": "True/False",
+                "questions": [{{"q_num": 1, "type": "true_false", "question": "...", "options": ["True", "False"], "marks": 1, "answer": "..."}}]
             }}
             """
 
         # 3. Quiz / MCQ Only
         elif format_clean in ["quiz", "mcq", "multiple choice"]:
             prompt = f"""
-            Act as an expert school exam setter.
-            Create a {difficulty} exam paper for '{topic}' containing exactly {total_marks} Multiple Choice Questions (1 mark each = {total_marks} total marks).
-
-            Return ONLY valid JSON format without markdown blocks.
+            Act as an expert school exam setter. Create a {difficulty} exam on '{topic}'.
+            Generate EXACTLY {total_marks} Multiple Choice Questions (1 mark each).
+            Return ONLY valid JSON format.
             Schema:
             {{
-                "topic": "{topic}",
-                "difficulty": "{difficulty}",
-                "total_marks": {total_marks},
-                "format": "MCQ",
-                "questions": [
-                    {{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "correct_answer": "...", "marks": 1}}
-                ]
+                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {total_marks}, "format": "MCQ",
+                "questions": [{{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "correct_answer": "...", "marks": 1}}]
             }}
             """
 
         # 4. Short Answers Only
         elif "short" in format_clean:
-            # 2 marks each, so divide total marks by 2 to get the required number of questions
             count = max(1, total_marks // 2)
             prompt = f"""
-            Act as an expert school exam setter.
-            Create a {difficulty} exam paper for '{topic}' containing exactly {count} Short Answer questions (2 marks each).
-            This totals {count * 2} marks. Each short answer should require a response of maximum 180 characters.
-
-            Return ONLY valid JSON format without markdown blocks.
+            Act as an expert school exam setter. Create a {difficulty} exam on '{topic}'.
+            Generate EXACTLY {count} Short Answer questions (2 marks each).
+            Return ONLY valid JSON format.
             Schema:
             {{
-                "topic": "{topic}",
-                "difficulty": "{difficulty}",
-                "total_marks": {count * 2},
-                "format": "Short Answers",
-                "questions": [
-                    {{"q_num": 1, "type": "short_answer", "question": "...", "marks": 2, "max_characters": 180, "expected_answer": "..."}}
-                ]
+                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {count * 2}, "format": "Short Answers",
+                "questions": [{{"q_num": 1, "type": "short_answer", "question": "...", "marks": 2, "max_characters": 180, "expected_answer": "..."}}]
             }}
             """
             
         # 5. Fill in the Blanks Only
         elif "fill" in format_clean or "blank" in format_clean:
             prompt = f"""
-            Act as an expert school exam setter.
-            Create a {difficulty} exam paper for '{topic}' containing exactly {total_marks} Fill in the Blank questions (1 mark each = {total_marks} total marks).
-
-            Return ONLY valid JSON format without markdown blocks.
+            Act as an expert school exam setter. Create a {difficulty} exam on '{topic}'.
+            Generate EXACTLY {total_marks} Fill in the Blank questions (1 mark each).
+            Return ONLY valid JSON format.
             Schema:
             {{
-                "topic": "{topic}",
-                "difficulty": "{difficulty}",
-                "total_marks": {total_marks},
-                "format": "Fill in the Blanks",
-                "questions": [
-                    {{"q_num": 1, "type": "fill_in_the_blank", "question": "...", "marks": 1, "answer": "..."}}
-                ]
+                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {total_marks}, "format": "Fill in the Blanks",
+                "questions": [{{"q_num": 1, "type": "fill_in_the_blank", "question": "...", "marks": 1, "answer": "..."}}]
             }}
             """
 
