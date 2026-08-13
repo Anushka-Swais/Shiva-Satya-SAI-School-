@@ -21,7 +21,6 @@ class FacultyAIController:
         self.stt_client = speech.SpeechClient(client_options=client_options)
 
         # 2. Premium Language mapping for Standard & Neural2 Google TTS voices
-        # Fixed regional voices from Wavenet to Standard (Wavenet voices are not supported for these language codes)
         self.advanced_language_map = {
             "english": {"code": "en-IN", "voice": "en-IN-Neural2-B"},
             "hindi": {"code": "hi-IN", "voice": "hi-IN-Neural2-A"},
@@ -38,18 +37,14 @@ class FacultyAIController:
 
     def _get_voice_config(self, language_name: str) -> dict:
         lang_lower = language_name.lower().strip()
-        # Defaults to Indian English Neural2 if language is not found
         return self.advanced_language_map.get(lang_lower, {"code": "en-IN", "voice": "en-IN-Neural2-A"})
 
     # --- REAL: Language script translator (OPTIMIZED FOR HIGH SPEED) ---
     def translate_text(self, text: str, target_language: str, user_email: str, client_name: str) -> str:
-        # SUPER COMPRESSED PROMPT: Fewer words for the AI to read = much faster response time.
         prompt = f"Translate to {target_language} (use native script only). Return ONLY the translation. Text: {text}"
         
-        # Uses the dynamic model_name from config.ai_config
         response = client.models.generate_content(model=model_name, contents=prompt)
         
-        # --- TRACKING ---
         db = SessionLocal()
         try:
             log_gemini_usage(db, response, client_name, user_email, "Faculty Dashboard", "Translate Text")
@@ -74,7 +69,6 @@ class FacultyAIController:
         voice_config = self._get_voice_config(language)
         audio = speech.RecognitionAudio(content=audio_bytes)
         
-        # We removed sample_rate_hertz so Google can automatically detect it from the WebM header!
         config = speech.RecognitionConfig(
             encoding=speech.RecognitionConfig.AudioEncoding.WEBM_OPUS,
             language_code=voice_config["code"]
@@ -82,7 +76,6 @@ class FacultyAIController:
         
         response = self.stt_client.recognize(config=config, audio=audio)
         
-        # Safety check if Google returns an empty result
         if not response.results:
             return ""
             
@@ -92,7 +85,6 @@ class FacultyAIController:
     def audio_language_translator(self, audio_bytes: bytes, source_language: str, target_language: str, user_email: str, client_name: str) -> dict:
         original_text = self.process_audio_to_text(audio_bytes, source_language)
         
-        # If the audio couldn't be processed or is empty
         if not original_text.strip():
             return {"original_text": "", "translated_text": "Please provide valid audio to translate.", "audio_base64": ""}
             
@@ -119,12 +111,98 @@ class FacultyAIController:
             
         return response.text.replace("```json", "").replace("```", "").strip()
 
-    def generate_question_paper(self, topic: str, difficulty: str, format_type: str, num_questions: int, user_email: str, client_name: str):
-        prompt = f"""
-        Create a {difficulty} exam on '{topic}' containing {num_questions} {format_type} questions.
-        Return ONLY valid JSON format.
-        Schema: {{"topic": "...", "difficulty": "...", "format": "...", "questions": ["...", "..."]}}
-        """
+    # --- UPDATED: Question Paper Generator with 50 Marks Support & Specific Distributions ---
+    def generate_question_paper(self, topic: str, difficulty: str, format_type: str, num_questions: int, user_email: str, client_name: str, total_marks: int = 50):
+        format_clean = format_type.lower().strip()
+        
+        # 1. Mixed / All Types (50 Marks Total)
+        if "mixed" in format_clean or "all" in format_clean:
+            prompt = f"""
+            Act as an expert school exam setter.
+            Create a {difficulty} exam paper for '{topic}' totaling exactly 50 marks.
+            
+            Strictly divide the paper into 4 sections:
+            1. Section A: 5 MCQ/Quiz questions (1 mark each = 5 marks).
+            2. Section B: 5 Fill in the Blanks questions (1 mark each = 5 marks).
+            3. Section C: 10 Short Answer questions (2 marks each = 20 marks). Target response limit: max 180 characters per answer.
+            4. Section D: 5 Long Answer questions (4 marks each = 20 marks). Target response limit: max 2000 characters per answer.
+
+            Return ONLY valid JSON format without markdown blocks.
+            Schema:
+            {{
+                "topic": "{topic}",
+                "difficulty": "{difficulty}",
+                "total_marks": 50,
+                "sections": [
+                    {{
+                        "section_title": "Section A - Multiple Choice Questions (5 Marks)",
+                        "questions": [{{"q_num": 1, "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "marks": 1, "answer": "..."}}]
+                    }},
+                    {{
+                        "section_title": "Section B - Fill in the Blanks (5 Marks)",
+                        "questions": [{{"q_num": 1, "question": "...", "marks": 1, "answer": "..."}}]
+                    }},
+                    {{
+                        "section_title": "Section C - Short Answer Questions (20 Marks)",
+                        "questions": [{{"q_num": 1, "question": "...", "marks": 2, "max_characters": 180, "expected_answer": "..."}}]
+                    }},
+                    {{
+                        "section_title": "Section D - Long Answer Questions (20 Marks)",
+                        "questions": [{{"q_num": 1, "question": "...", "marks": 4, "max_characters": 2000, "expected_answer": "..."}}]
+                    }}
+                ]
+            }}
+            """
+
+        # 2. Quiz / MCQ Only (50 Marks Total = 50 Questions, 1 Mark each)
+        elif "quiz" in format_clean or "mcq" in format_clean:
+            count = 50 if total_marks == 50 else num_questions
+            prompt = f"""
+            Act as an expert school exam setter.
+            Create a {difficulty} exam paper for '{topic}' containing exactly {count} Quiz/MCQ questions (1 mark each = {count} total marks).
+
+            Return ONLY valid JSON format without markdown blocks.
+            Schema:
+            {{
+                "topic": "{topic}",
+                "difficulty": "{difficulty}",
+                "total_marks": {count},
+                "format": "Quiz/MCQ",
+                "questions": [
+                    {{"q_num": 1, "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "correct_answer": "...", "marks": 1}}
+                ]
+            }}
+            """
+
+        # 3. Short Answers Only (50 Marks Total = 25 Questions, 2 Marks each)
+        elif "short" in format_clean:
+            count = 25 if total_marks == 50 else (num_questions if num_questions > 0 else 25)
+            prompt = f"""
+            Act as an expert school exam setter.
+            Create a {difficulty} exam paper for '{topic}' containing exactly {count} Short Answer questions (2 marks each = {count * 2} total marks).
+            Each short answer should require a response of maximum 180 characters.
+
+            Return ONLY valid JSON format without markdown blocks.
+            Schema:
+            {{
+                "topic": "{topic}",
+                "difficulty": "{difficulty}",
+                "total_marks": {count * 2},
+                "format": "Short Answers",
+                "questions": [
+                    {{"q_num": 1, "question": "...", "marks": 2, "max_characters": 180, "sample_answer": "..."}}
+                ]
+            }}
+            """
+
+        # 4. Fallback / Custom Format
+        else:
+            prompt = f"""
+            Create a {difficulty} exam on '{topic}' containing {num_questions} {format_type} questions for total {total_marks} marks.
+            Return ONLY valid JSON format.
+            Schema: {{"topic": "{topic}", "difficulty": "{difficulty}", "format": "{format_type}", "questions": [{{"question": "...", "marks": 1}}]}}
+            """
+
         response = client.models.generate_content(model=model_name, contents=prompt)
         
         db = SessionLocal()
@@ -183,10 +261,6 @@ class FacultyAIController:
     # --- Competitive Exam Prep Features ---
 
     def get_competitive_exam_structure(self, exam_type: str, class_level: str, user_email: str, client_name: str):
-        """
-        Dynamically fetches the subjects and topics based on the selected exam and class.
-        Use this to populate your frontend dropdowns!
-        """
         prompt = f"""
         You are an expert curriculum designer for Indian competitive exams.
         A student in Class {class_level} wants to start foundation preparation for the '{exam_type}' exam.
@@ -206,10 +280,6 @@ class FacultyAIController:
         return response.text.replace("```json", "").replace("```", "").strip()
 
     def generate_competitive_content(self, exam_type: str, class_level: str, subject: str, topic: str, content_type: str, user_email: str, client_name: str):
-        """
-        Generates the actual Study Material or Quiz based on the specific exam, class, subject, and topic.
-        content_type should be either 'Quiz' or 'Study Material'.
-        """
         prompt = f"""
         Act as an expert coaching instructor for the {exam_type} exam in India.
         Create '{content_type}' for a student in Class {class_level} focusing on the subject '{subject}' and the topic '{topic}'.
@@ -218,7 +288,6 @@ class FacultyAIController:
         Return ONLY valid JSON format. Do not use markdown blocks.
         """
         
-        # Adjusting the required JSON schema based on what the user requested (Quiz vs Material)
         if content_type.lower() == "quiz":
             prompt += f"""
             Schema: {{"exam": "{exam_type}", "topic": "{topic}", "questions": [{{"question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "correct_answer": "...", "explanation": "..."}}]}}
