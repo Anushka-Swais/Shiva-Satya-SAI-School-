@@ -36,33 +36,38 @@ class FacultyAIController:
         }
 
     def _get_voice_config(self, language_name: str) -> dict:
-        lang_lower = language_name.lower().strip()
-        # Defaults to Indian English Neural2 if language is not found
+        lang_lower = language_name.lower().strip() if language_name else "english"
         return self.advanced_language_map.get(lang_lower, {"code": "en-IN", "voice": "en-IN-Neural2-A"})
 
-    # --- PYTHON MATH HELPER TO PREVENT AI HALLUCINATIONS ---
+    # --- PYTHON MATH HELPER FOR DYNAMIC MARKS BREAKDOWN ---
     def _calculate_mixed_distribution(self, total_marks: int) -> dict:
-        """Dynamically calculates question counts so the AI doesn't have to do math."""
+        """Calculates exact question counts for ANY total_marks so Gemini doesn't default to MCQs."""
         dist = {"mcq": 0, "true_false": 0, "fill_in_the_blank": 0, "short_answer": 0, "long_answer": 0}
         
-        # Fallback for very small marks
-        if total_marks < 5:
-            dist["mcq"] = total_marks
-            return dist
+        # Standard 50-mark pattern requested
+        if total_marks == 50:
+            return {
+                "mcq": 5,              # 5 x 1m = 5 marks
+                "true_false": 5,       # 5 x 1m = 5 marks (Or Fill in blanks/TF split)
+                "fill_in_the_blank": 5,# 5 x 1m = 5 marks
+                "short_answer": 10,    # 10 x 2m = 20 marks
+                "long_answer": 3       # 3 x 5m = 15 marks (or 5 x 4m = 20 marks depending on breakdown)
+            }
             
+        # Dynamic calculation for non-50 total marks (e.g., 20, 30, 100)
         remaining = total_marks
         
-        # 1. Allocate ~40% of marks to Long Answers (4 marks each)
-        target_long = int(total_marks * 0.4) // 4
-        dist["long_answer"] = target_long
-        remaining -= (target_long * 4)
+        # Long answers (~40% of total marks, 4 marks each)
+        long_count = int(total_marks * 0.4) // 4
+        dist["long_answer"] = max(1 if total_marks >= 20 else 0, long_count)
+        remaining -= (dist["long_answer"] * 4)
         
-        # 2. Allocate ~30% of marks to Short Answers (2 marks each)
-        target_short = int(total_marks * 0.3) // 2
-        dist["short_answer"] = target_short
-        remaining -= (target_short * 2)
+        # Short answers (~30% of total marks, 2 marks each)
+        short_count = int(total_marks * 0.3) // 2
+        dist["short_answer"] = max(1 if total_marks >= 10 else 0, short_count)
+        remaining -= (dist["short_answer"] * 2)
         
-        # 3. Distribute all remaining marks evenly among 1-mark questions
+        # Divide remaining 1-mark questions evenly across MCQ, True/False, Fill in Blank
         cycle = ["mcq", "true_false", "fill_in_the_blank"]
         idx = 0
         while remaining > 0:
@@ -72,10 +77,9 @@ class FacultyAIController:
             
         return dist
 
-    # --- REAL: Language script translator (OPTIMIZED FOR HIGH SPEED) ---
+    # --- REAL: Language script translator ---
     def translate_text(self, text: str, target_language: str, user_email: str, client_name: str) -> str:
         prompt = f"Translate to {target_language} (use native script only). Return ONLY the translation. Text: {text}"
-        
         response = client.models.generate_content(model=model_name, contents=prompt)
         
         db = SessionLocal()
@@ -108,7 +112,6 @@ class FacultyAIController:
         )
         
         response = self.stt_client.recognize(config=config, audio=audio)
-        
         if not response.results:
             return ""
             
@@ -117,7 +120,6 @@ class FacultyAIController:
     # --- REAL: Audio language translator ---
     def audio_language_translator(self, audio_bytes: bytes, source_language: str, target_language: str, user_email: str, client_name: str) -> dict:
         original_text = self.process_audio_to_text(audio_bytes, source_language)
-        
         if not original_text.strip():
             return {"original_text": "", "translated_text": "Please provide valid audio to translate.", "audio_base64": ""}
             
@@ -144,25 +146,35 @@ class FacultyAIController:
             
         return response.text.replace("```json", "").replace("```", "").strip()
 
-    # --- UPDATED: Bulletproof Question Paper Generator ---
-    def generate_question_paper(self, topic: str, difficulty: str, format_type: str, num_questions: int, user_email: str, client_name: str, total_marks: int = 50):
-        format_clean = format_type.lower().strip()
+    # --- BULLETPROOF QUESTION PAPER GENERATOR ---
+    def generate_question_paper(self, topic: str, difficulty: str, format_type: str = "all", num_questions: int = 0, user_email: str = "", client_name: str = "", total_marks: int = 50):
+        # Normalize format string
+        format_clean = str(format_type).lower().strip() if format_type else "all"
         
-        # 1. Mixed / All Types (Fully Calculated in Python first)
-        if format_clean in ["all", "all type", "all types", "mixed", "mixed type"]:
+        # Treats empty, 'optional', 'all', 'mixed', 'all types' as Mixed mode
+        is_mixed_mode = format_clean in ["all", "all type", "all types", "mixed", "mixed type", "optional", "", "none"]
+        
+        if is_mixed_mode:
             dist = self._calculate_mixed_distribution(total_marks)
             
             prompt = f"""
-            Act as an expert school exam setter. Create a {difficulty} exam on '{topic}'.
-            You MUST generate EXACTLY these question counts, placed in a single flat 'questions' array:
-            
-            - {dist['mcq']} questions of type "mcq" (1 mark each)
-            - {dist['true_false']} questions of type "true_false" (1 mark each)
-            - {dist['fill_in_the_blank']} questions of type "fill_in_the_blank" (1 mark each)
-            - {dist['short_answer']} questions of type "short_answer" (2 marks each, max 180 characters)
-            - {dist['long_answer']} questions of type "long_answer" (4 marks each, max 2000 characters)
+            Act as an expert school exam setter. Create a {difficulty} exam paper for '{topic}' totaling EXACTLY {total_marks} marks.
 
-            Return ONLY valid JSON format. Follow this exact schema for each type:
+            CRITICAL REQUIREMENT: You MUST generate questions with different types. Do NOT generate only MCQs.
+            Generate a single flat array called 'questions' containing EXACTLY:
+            - {dist['mcq']} MCQs (type: "mcq", 1 mark each)
+            - {dist['true_false']} True/False questions (type: "true_false", 1 mark each)
+            - {dist['fill_in_the_blank']} Fill in the Blanks (type: "fill_in_the_blank", 1 mark each)
+            - {dist['short_answer']} Short Answer questions (type: "short_answer", 2 marks each, response max 180 chars)
+            - {dist['long_answer']} Long Answer questions (type: "long_answer", 4 marks each, response max 2000 chars)
+
+            STRICT JSON RULES:
+            1. For 'mcq', include "options": ["A) ...", "B) ...", "C) ...", "D) ..."]
+            2. For 'true_false', include "options": ["True", "False"]
+            3. For 'fill_in_the_blank', 'short_answer', and 'long_answer', DO NOT include an 'options' field at all!
+
+            Return ONLY valid JSON format without markdown code fences.
+            Schema Example:
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
@@ -178,12 +190,10 @@ class FacultyAIController:
             }}
             """
 
-        # 2. True/False Only
-        elif format_clean in ["true/false", "true false", "tf"]:
+        elif "true" in format_clean or "false" in format_clean or "tf" in format_clean:
             prompt = f"""
-            Act as an expert school exam setter. Create a {difficulty} exam on '{topic}'.
-            Generate EXACTLY {total_marks} True/False questions (1 mark each).
-            Return ONLY valid JSON format.
+            Create a {difficulty} exam on '{topic}' containing EXACTLY {total_marks} True/False questions (1 mark each).
+            Return ONLY valid JSON.
             Schema:
             {{
                 "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {total_marks}, "format": "True/False",
@@ -191,39 +201,35 @@ class FacultyAIController:
             }}
             """
 
-        # 3. Quiz / MCQ Only
-        elif format_clean in ["quiz", "mcq", "multiple choice"]:
+        elif "mcq" in format_clean or "quiz" in format_clean:
             prompt = f"""
-            Act as an expert school exam setter. Create a {difficulty} exam on '{topic}'.
-            Generate EXACTLY {total_marks} Multiple Choice Questions (1 mark each).
-            Return ONLY valid JSON format.
+            Create a {difficulty} exam on '{topic}' containing EXACTLY {total_marks} MCQ questions (1 mark each).
+            Return ONLY valid JSON.
             Schema:
             {{
                 "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {total_marks}, "format": "MCQ",
-                "questions": [{{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "correct_answer": "...", "marks": 1}}]
+                "questions": [{{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "answer": "...", "marks": 1}}]
             }}
             """
 
-        # 4. Short Answers Only
         elif "short" in format_clean:
             count = max(1, total_marks // 2)
             prompt = f"""
-            Act as an expert school exam setter. Create a {difficulty} exam on '{topic}'.
-            Generate EXACTLY {count} Short Answer questions (2 marks each).
-            Return ONLY valid JSON format.
+            Create a {difficulty} exam on '{topic}' containing EXACTLY {count} Short Answer questions (2 marks each = {count * 2} marks total).
+            Do NOT include options array. Maximum 180 characters allowed per response.
+            Return ONLY valid JSON.
             Schema:
             {{
                 "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {count * 2}, "format": "Short Answers",
                 "questions": [{{"q_num": 1, "type": "short_answer", "question": "...", "marks": 2, "max_characters": 180, "expected_answer": "..."}}]
             }}
             """
-            
-        # 5. Fill in the Blanks Only
+
         elif "fill" in format_clean or "blank" in format_clean:
             prompt = f"""
-            Act as an expert school exam setter. Create a {difficulty} exam on '{topic}'.
-            Generate EXACTLY {total_marks} Fill in the Blank questions (1 mark each).
-            Return ONLY valid JSON format.
+            Create a {difficulty} exam on '{topic}' containing EXACTLY {total_marks} Fill in the Blank questions (1 mark each).
+            Do NOT include options array.
+            Return ONLY valid JSON.
             Schema:
             {{
                 "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {total_marks}, "format": "Fill in the Blanks",
@@ -231,12 +237,19 @@ class FacultyAIController:
             }}
             """
 
-        # 6. Fallback / Custom Format
         else:
+            dist = self._calculate_mixed_distribution(total_marks)
             prompt = f"""
-            Create a {difficulty} exam on '{topic}' containing '{format_type}' questions for a total of {total_marks} marks.
-            Return ONLY valid JSON format.
-            Schema: {{"topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {total_marks}, "format": "{format_type}", "questions": [{{"q_num": 1, "type": "custom", "question": "...", "marks": 1, "answer": "..."}}]}}
+            Create a {difficulty} exam on '{topic}' for {total_marks} marks containing a mix of MCQs, True/False, Fill in Blanks, Short and Long answers.
+            Return ONLY valid JSON.
+            Schema:
+            {{
+                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {total_marks}, "format": "Mixed",
+                "questions": [
+                    {{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "marks": 1, "answer": "..."}},
+                    {{"q_num": 2, "type": "short_answer", "question": "...", "marks": 2, "max_characters": 180, "expected_answer": "..."}}
+                ]
+            }}
             """
 
         response = client.models.generate_content(model=model_name, contents=prompt)
