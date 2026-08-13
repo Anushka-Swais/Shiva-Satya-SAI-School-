@@ -37,6 +37,7 @@ class FacultyAIController:
 
     def _get_voice_config(self, language_name: str) -> dict:
         lang_lower = language_name.lower().strip()
+        # Defaults to Indian English Neural2 if language is not found
         return self.advanced_language_map.get(lang_lower, {"code": "en-IN", "voice": "en-IN-Neural2-A"})
 
     # --- REAL: Language script translator (OPTIMIZED FOR HIGH SPEED) ---
@@ -111,55 +112,44 @@ class FacultyAIController:
             
         return response.text.replace("```json", "").replace("```", "").strip()
 
-    # --- UPDATED: Question Paper Generator with 50 Marks Support & Specific Distributions ---
+    # --- UPDATED: Question Paper Generator with Flat Array JSON Schema ---
     def generate_question_paper(self, topic: str, difficulty: str, format_type: str, num_questions: int, user_email: str, client_name: str, total_marks: int = 50):
         format_clean = format_type.lower().strip()
         
         # 1. Mixed / All Types (50 Marks Total)
-        if "mixed" in format_clean or "all" in format_clean:
+        if format_clean in ["all", "all type", "all types", "mixed", "mixed type"]:
             prompt = f"""
             Act as an expert school exam setter.
             Create a {difficulty} exam paper for '{topic}' totaling exactly 50 marks.
             
-            Strictly divide the paper into 4 sections:
-            1. Section A: 5 MCQ/Quiz questions (1 mark each = 5 marks).
-            2. Section B: 5 Fill in the Blanks questions (1 mark each = 5 marks).
-            3. Section C: 10 Short Answer questions (2 marks each = 20 marks). Target response limit: max 180 characters per answer.
-            4. Section D: 5 Long Answer questions (4 marks each = 20 marks). Target response limit: max 2000 characters per answer.
+            You MUST provide exactly 25 questions in a single flat 'questions' array, strictly divided as follows:
+            - Questions 1 to 5: 5 Multiple Choice Questions (1 mark each).
+            - Questions 6 to 10: 5 Fill in the Blanks questions (1 mark each).
+            - Questions 11 to 20: 10 Short Answer questions (2 marks each, max 180 characters).
+            - Questions 21 to 25: 5 Long Answer questions (4 marks each, max 2000 characters).
 
-            Return ONLY valid JSON format without markdown blocks.
+            Return ONLY valid JSON format without markdown blocks. Do NOT use nested sections.
             Schema:
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
                 "total_marks": 50,
-                "sections": [
-                    {{
-                        "section_title": "Section A - Multiple Choice Questions (5 Marks)",
-                        "questions": [{{"q_num": 1, "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "marks": 1, "answer": "..."}}]
-                    }},
-                    {{
-                        "section_title": "Section B - Fill in the Blanks (5 Marks)",
-                        "questions": [{{"q_num": 1, "question": "...", "marks": 1, "answer": "..."}}]
-                    }},
-                    {{
-                        "section_title": "Section C - Short Answer Questions (20 Marks)",
-                        "questions": [{{"q_num": 1, "question": "...", "marks": 2, "max_characters": 180, "expected_answer": "..."}}]
-                    }},
-                    {{
-                        "section_title": "Section D - Long Answer Questions (20 Marks)",
-                        "questions": [{{"q_num": 1, "question": "...", "marks": 4, "max_characters": 2000, "expected_answer": "..."}}]
-                    }}
+                "format": "Mixed",
+                "questions": [
+                    {{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "marks": 1, "answer": "..."}},
+                    {{"q_num": 6, "type": "fill_in_the_blank", "question": "...", "marks": 1, "answer": "..."}},
+                    {{"q_num": 11, "type": "short_answer", "question": "...", "marks": 2, "max_characters": 180, "expected_answer": "..."}},
+                    {{"q_num": 21, "type": "long_answer", "question": "...", "marks": 4, "max_characters": 2000, "expected_answer": "..."}}
                 ]
             }}
             """
 
-        # 2. Quiz / MCQ Only (50 Marks Total = 50 Questions, 1 Mark each)
-        elif "quiz" in format_clean or "mcq" in format_clean:
+        # 2. Quiz / MCQ Only
+        elif format_clean in ["quiz", "mcq", "multiple choice"]:
             count = 50 if total_marks == 50 else num_questions
             prompt = f"""
             Act as an expert school exam setter.
-            Create a {difficulty} exam paper for '{topic}' containing exactly {count} Quiz/MCQ questions (1 mark each = {count} total marks).
+            Create a {difficulty} exam paper for '{topic}' containing exactly {count} Multiple Choice Questions (1 mark each = {count} total marks).
 
             Return ONLY valid JSON format without markdown blocks.
             Schema:
@@ -167,14 +157,14 @@ class FacultyAIController:
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
                 "total_marks": {count},
-                "format": "Quiz/MCQ",
+                "format": "MCQ",
                 "questions": [
-                    {{"q_num": 1, "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "correct_answer": "...", "marks": 1}}
+                    {{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "correct_answer": "...", "marks": 1}}
                 ]
             }}
             """
 
-        # 3. Short Answers Only (50 Marks Total = 25 Questions, 2 Marks each)
+        # 3. Short Answers Only
         elif "short" in format_clean:
             count = 25 if total_marks == 50 else (num_questions if num_questions > 0 else 25)
             prompt = f"""
@@ -190,7 +180,7 @@ class FacultyAIController:
                 "total_marks": {count * 2},
                 "format": "Short Answers",
                 "questions": [
-                    {{"q_num": 1, "question": "...", "marks": 2, "max_characters": 180, "sample_answer": "..."}}
+                    {{"q_num": 1, "type": "short_answer", "question": "...", "marks": 2, "max_characters": 180, "expected_answer": "..."}}
                 ]
             }}
             """
@@ -200,7 +190,7 @@ class FacultyAIController:
             prompt = f"""
             Create a {difficulty} exam on '{topic}' containing {num_questions} {format_type} questions for total {total_marks} marks.
             Return ONLY valid JSON format.
-            Schema: {{"topic": "{topic}", "difficulty": "{difficulty}", "format": "{format_type}", "questions": [{{"question": "...", "marks": 1}}]}}
+            Schema: {{"topic": "{topic}", "difficulty": "{difficulty}", "format": "{format_type}", "questions": [{{"q_num": 1, "type": "custom", "question": "...", "marks": 1, "answer": "..."}}]}}
             """
 
         response = client.models.generate_content(model=model_name, contents=prompt)
