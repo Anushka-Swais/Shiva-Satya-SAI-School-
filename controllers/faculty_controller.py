@@ -40,23 +40,61 @@ class FacultyAIController:
         return self.advanced_language_map.get(lang_lower, {"code": "en-IN", "voice": "en-IN-Neural2-A"})
 
     # --- PYTHON MATH HELPER FOR DYNAMIC MARKS BREAKDOWN ---
-    def _calculate_mixed_distribution(self, total_questions: int) -> dict:
-        """Evenly distributes the exact requested question count across all 5 types."""
-        base_count = total_questions // 5
-        remainder = total_questions % 5
+    def _calculate_mixed_distribution(self, total_marks: int) -> dict:
+        """Calculates exact question counts mathematically matching the total marks requested."""
+        # Exact mapping for 50 Marks (Yields exactly 25 questions total)
+        if total_marks == 50:
+            return {
+                "mcq": 5,              # 5 x 1m = 5
+                "true_false": 5,       # 5 x 1m = 5
+                "fill_in_the_blank": 5,# 5 x 1m = 5
+                "short_answer": 5,     # 5 x 2m = 10
+                "long_answer": 5       # 5 x 5m = 25
+            }                          # Total  = 50
+            
+        # Exact mapping for 30 Marks (Yields exactly 21 questions total)
+        elif total_marks == 30:
+            return {
+                "mcq": 5,              # 5 x 1m = 5
+                "true_false": 5,       # 5 x 1m = 5
+                "fill_in_the_blank": 5,# 5 x 1m = 5
+                "short_answer": 5,     # 5 x 2m = 10
+                "long_answer": 1       # 1 x 5m = 5
+            }                          # Total  = 30
+            
+        # Exact mapping for 20 Marks (Yields exactly 15 questions total)
+        elif total_marks == 20:
+            return {
+                "mcq": 4,              # 4 x 1m = 4
+                "true_false": 3,       # 3 x 1m = 3
+                "fill_in_the_blank": 3,# 3 x 1m = 3
+                "short_answer": 5,     # 5 x 2m = 10
+                "long_answer": 0       # 0 x 5m = 0
+            }                          # Total  = 20
+            
+        # Dynamic calculation for any other odd marks (e.g., 40, 100)
+        dist = {"mcq": 0, "true_false": 0, "fill_in_the_blank": 0, "short_answer": 0, "long_answer": 0}
+        remaining = total_marks
         
-        dist = {
-            "mcq": base_count,
-            "true_false": base_count,
-            "fill_in_the_blank": base_count,
-            "short_answer": base_count,
-            "long_answer": base_count
-        }
-        
-        # Distribute any remaining questions sequentially so the count is EXACT
-        keys = ["mcq", "true_false", "fill_in_the_blank", "short_answer", "long_answer"]
-        for i in range(remainder):
-            dist[keys[i]] += 1
+        # Allocate Long Answers (5 marks each)
+        if remaining >= 15:
+            long_c = int(remaining * 0.4) // 5
+            dist["long_answer"] = long_c
+            remaining -= (long_c * 5)
+            
+        # Allocate Short Answers (2 marks each)
+        if remaining >= 6:
+            short_c = int(remaining * 0.4) // 2
+            dist["short_answer"] = short_c
+            remaining -= (short_c * 2)
+            
+        # Distribute remaining points equally among 1-mark questions
+        cycle = ["mcq", "true_false", "fill_in_the_blank"]
+        idx = 0
+        while remaining > 0:
+            dist[cycle[idx % 3]] += 1
+            remaining -= 1
+            idx += 1
             
         return dist
 
@@ -131,10 +169,9 @@ class FacultyAIController:
 
     # --- BULLETPROOF QUESTION PAPER GENERATOR (SKELETON INJECTION) ---
     def generate_question_paper(self, topic: str, difficulty: str, format_type: str = "all", num_questions: int = 0, user_email: str = "", client_name: str = "", total_marks: int = 50):
-        # We explicitly set the requested question count to exactly match the marks slider selection
-        target_question_count = int(num_questions) if (int(num_questions) > 0 and int(total_marks) == 50) else int(total_marks)
-        if target_question_count <= 0:
-            target_question_count = 50
+        actual_marks = int(num_questions) if (int(num_questions) > 0 and int(total_marks) == 50) else int(total_marks)
+        if actual_marks <= 0:
+            actual_marks = 50
             
         format_clean = str(format_type).lower().strip() if format_type else "all"
         is_mixed_mode = format_clean in ["all", "all type", "all types", "mixed", "mixed type", "optional", "", "none"]
@@ -143,9 +180,7 @@ class FacultyAIController:
         q_num = 1
 
         if is_mixed_mode:
-            dist = self._calculate_mixed_distribution(target_question_count)
-            # Calculate true total marks based on requested weighting (1, 1, 1, 2, 5)
-            calculated_total_marks = (dist['mcq'] * 1) + (dist['true_false'] * 1) + (dist['fill_in_the_blank'] * 1) + (dist['short_answer'] * 2) + (dist['long_answer'] * 5)
+            dist = self._calculate_mixed_distribution(actual_marks)
             
             # Build an unbreakable JSON skeleton that the AI is FORCED to fill out
             for _ in range(dist['mcq']):
@@ -177,14 +212,17 @@ class FacultyAIController:
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
-                "total_marks": {calculated_total_marks},
+                "total_marks": {actual_marks},
                 "format": "Mixed",
                 "questions": {json.dumps(skeleton, indent=4)}
             }}
             """
 
         elif "true" in format_clean or "false" in format_clean or "tf" in format_clean:
-            for i in range(1, target_question_count + 1):
+            # Force minimum 15 questions for single formats to ensure proper test length
+            count = max(15, actual_marks)
+            actual_marks = count
+            for i in range(1, count + 1):
                 skeleton.append({"q_num": i, "type": "true_false", "question": "[FILL_IN_QUESTION]", "options": ["True", "False"], "marks": 1, "answer": "[FILL_IN_ANSWER]"})
             
             prompt = f"""
@@ -197,14 +235,16 @@ class FacultyAIController:
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
-                "total_marks": {target_question_count},
+                "total_marks": {actual_marks},
                 "format": "True/False",
                 "questions": {json.dumps(skeleton, indent=4)}
             }}
             """
 
         elif "mcq" in format_clean or "quiz" in format_clean:
-            for i in range(1, target_question_count + 1):
+            count = max(15, actual_marks)
+            actual_marks = count
+            for i in range(1, count + 1):
                 skeleton.append({"q_num": i, "type": "mcq", "question": "[FILL_IN_QUESTION]", "options": ["[A] Option", "[B] Option", "[C] Option", "[D] Option"], "marks": 1, "answer": "[FILL_IN_ANSWER]"})
                 
             prompt = f"""
@@ -217,14 +257,16 @@ class FacultyAIController:
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
-                "total_marks": {target_question_count},
+                "total_marks": {actual_marks},
                 "format": "MCQ",
                 "questions": {json.dumps(skeleton, indent=4)}
             }}
             """
 
         elif "short" in format_clean:
-            for i in range(1, target_question_count + 1):
+            count = max(15, actual_marks // 2)
+            actual_marks = count * 2
+            for i in range(1, count + 1):
                 skeleton.append({"q_num": i, "type": "short_answer", "question": "[FILL_IN_QUESTION]", "marks": 2, "max_characters": 180, "expected_answer": "[FILL_IN_ANSWER]"})
                 
             prompt = f"""
@@ -237,14 +279,16 @@ class FacultyAIController:
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
-                "total_marks": {target_question_count * 2},
+                "total_marks": {actual_marks},
                 "format": "Short Answers",
                 "questions": {json.dumps(skeleton, indent=4)}
             }}
             """
 
         elif "fill" in format_clean or "blank" in format_clean:
-            for i in range(1, target_question_count + 1):
+            count = max(15, actual_marks)
+            actual_marks = count
+            for i in range(1, count + 1):
                 skeleton.append({"q_num": i, "type": "fill_in_the_blank", "question": "[FILL_IN_QUESTION_WITH_BLANK]", "marks": 1, "answer": "[FILL_IN_ANSWER]"})
                 
             prompt = f"""
@@ -257,7 +301,7 @@ class FacultyAIController:
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
-                "total_marks": {target_question_count},
+                "total_marks": {actual_marks},
                 "format": "Fill in the Blanks",
                 "questions": {json.dumps(skeleton, indent=4)}
             }}
