@@ -40,15 +40,63 @@ class FacultyAIController:
         return self.advanced_language_map.get(lang_lower, {"code": "en-IN", "voice": "en-IN-Neural2-A"})
 
     # --- PYTHON MATH HELPER FOR DYNAMIC MARKS BREAKDOWN ---
-    def _calculate_mixed_distribution(self, total_marks: int = None) -> dict:
-        """Sets exactly 15 questions per question type."""
-        return {
-            "mcq": 15,               # 15 x 1m = 15 marks
-            "true_false": 15,        # 15 x 1m = 15 marks
-            "fill_in_the_blank": 15, # 15 x 1m = 15 marks
-            "short_answer": 15,      # 15 x 2m = 30 marks
-            "long_answer": 15        # 15 x 4m = 60 marks
-        }
+    def _calculate_mixed_distribution(self, total_marks: int) -> dict:
+        """Calculates exact question counts mathematically matching the total marks requested."""
+        # Exact mapping for 50 Marks as requested
+        if total_marks == 50:
+            return {
+                "mcq": 5,              # 5 x 1m = 5
+                "true_false": 5,       # 5 x 1m = 5
+                "fill_in_the_blank": 5,# 5 x 1m = 5
+                "short_answer": 5,     # 5 x 2m = 10
+                "long_answer": 5       # 5 x 5m = 25
+            }                          # Total  = 50
+            
+        # Exact mapping for 30 Marks
+        elif total_marks == 30:
+            return {
+                "mcq": 5,              # 5 x 1m = 5
+                "true_false": 5,       # 5 x 1m = 5
+                "fill_in_the_blank": 5,# 5 x 1m = 5
+                "short_answer": 5,     # 5 x 2m = 10
+                "long_answer": 1       # 1 x 5m = 5
+            }                          # Total  = 30
+            
+        # Exact mapping for 20 Marks
+        elif total_marks == 20:
+            return {
+                "mcq": 4,              # 4 x 1m = 4
+                "true_false": 3,       # 3 x 1m = 3
+                "fill_in_the_blank": 3,# 3 x 1m = 3
+                "short_answer": 5,     # 5 x 2m = 10
+                "long_answer": 0       # 0 x 5m = 0
+            }                          # Total  = 20
+            
+        # Dynamic calculation for any other odd marks (e.g., 40, 100)
+        dist = {"mcq": 0, "true_false": 0, "fill_in_the_blank": 0, "short_answer": 0, "long_answer": 0}
+        remaining = total_marks
+        
+        # Allocate Long Answers (5 marks each)
+        if remaining >= 15:
+            long_c = int(remaining * 0.4) // 5
+            dist["long_answer"] = long_c
+            remaining -= (long_c * 5)
+            
+        # Allocate Short Answers (2 marks each)
+        if remaining >= 6:
+            short_c = int(remaining * 0.4) // 2
+            dist["short_answer"] = short_c
+            remaining -= (short_c * 2)
+            
+        # Distribute remaining points equally among 1-mark questions
+        cycle = ["mcq", "true_false", "fill_in_the_blank"]
+        idx = 0
+        while remaining > 0:
+            dist[cycle[idx % 3]] += 1
+            remaining -= 1
+            idx += 1
+            
+        return dist
 
     # --- REAL: Language script translator ---
     def translate_text(self, text: str, target_language: str, user_email: str, client_name: str) -> str:
@@ -121,6 +169,10 @@ class FacultyAIController:
 
     # --- BULLETPROOF QUESTION PAPER GENERATOR ---
     def generate_question_paper(self, topic: str, difficulty: str, format_type: str = "all", num_questions: int = 0, user_email: str = "", client_name: str = "", total_marks: int = 50):
+        actual_marks = int(num_questions) if (int(num_questions) > 0 and int(total_marks) == 50) else int(total_marks)
+        if actual_marks <= 0:
+            actual_marks = 50
+            
         format_clean = str(format_type).lower().strip() if format_type else "all"
         is_mixed_mode = format_clean in ["all", "all type", "all types", "mixed", "mixed type", "optional", "", "none"]
         
@@ -128,28 +180,27 @@ class FacultyAIController:
         strict_rules = """
         !!! CRITICAL ANTI-LAZY INSTRUCTION !!!
         You MUST generate every single requested question in full. 
-        DO NOT stop early. DO NOT generate only 3 or 5 sample questions. 
+        DO NOT stop early. DO NOT generate sample questions. 
         You must write out EVERY single question until the requested count is reached.
         Number the 'q_num' field sequentially starting from 1.
         DO NOT use placeholders like "..." or "etc".
         """
 
         if is_mixed_mode:
-            dist = self._calculate_mixed_distribution()
-            total_q_count = sum(dist.values())  # Exactly 75 questions (15 x 5 types)
-            calculated_total_marks = (dist["mcq"] * 1) + (dist["true_false"] * 1) + (dist["fill_in_the_blank"] * 1) + (dist["short_answer"] * 2) + (dist["long_answer"] * 4)
-
+            dist = self._calculate_mixed_distribution(actual_marks)
+            total_q_count = sum(dist.values())
+            
             prompt = f"""
             Act as an expert school exam setter. Create a {difficulty} exam paper for '{topic}'.
 
             {strict_rules}
             
-            REQUIREMENT: You MUST generate EXACTLY {total_q_count} questions in total in the 'questions' array (15 of EACH question type):
-            - {dist['mcq']} Multiple Choice Questions (type: "mcq", 1 mark each)
-            - {dist['true_false']} True/False Questions (type: "true_false", 1 mark each)
-            - {dist['fill_in_the_blank']} Fill in the Blank Questions (type: "fill_in_the_blank", 1 mark each)
-            - {dist['short_answer']} Short Answer Questions (type: "short_answer", 2 marks each, response max 180 chars)
-            - {dist['long_answer']} Long Answer Questions (type: "long_answer", 4 marks each, response max 2000 chars)
+            REQUIREMENT: You MUST generate EXACTLY {total_q_count} questions in total in the 'questions' array, perfectly matching these totals:
+            - {dist['mcq']} MCQs (type: "mcq", 1 mark each)
+            - {dist['true_false']} True/False questions (type: "true_false", 1 mark each)
+            - {dist['fill_in_the_blank']} Fill in the Blanks (type: "fill_in_the_blank", 1 mark each)
+            - {dist['short_answer']} Short Answer questions (type: "short_answer", 2 marks each, response max 180 chars)
+            - {dist['long_answer']} Long Answer questions (type: "long_answer", 5 marks each, response max 2000 chars)
 
             STRICT JSON RULES:
             1. For 'mcq', include "options": ["A) ...", "B) ...", "C) ...", "D) ..."]
@@ -161,83 +212,83 @@ class FacultyAIController:
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
-                "total_marks": {calculated_total_marks},
+                "total_marks": {actual_marks},
                 "format": "Mixed",
                 "questions": [
-                    {{"q_num": 1, "type": "mcq", "question": "Question 1 text", "options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"], "marks": 1, "answer": "A) Option 1"}}
+                    {{"q_num": 1, "type": "mcq", "question": "Question text here", "options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"], "marks": 1, "answer": "A) Option 1"}}
                 ]
             }}
             """
 
         elif "true" in format_clean or "false" in format_clean or "tf" in format_clean:
             prompt = f"""
-            Create a {difficulty} exam on '{topic}' containing EXACTLY 15 True/False questions (1 mark each).
+            Create a {difficulty} exam on '{topic}' containing EXACTLY {actual_marks} True/False questions (1 mark each).
             
             {strict_rules}
-            REQUIREMENT: You must generate EXACTLY 15 items in the 'questions' array (q_num: 1 to 15).
+            REQUIREMENT: You must generate EXACTLY {actual_marks} items in the 'questions' array (q_num: 1 to {actual_marks}).
             
             Return ONLY valid JSON.
             Schema:
             {{
-                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": 15, "format": "True/False",
+                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {actual_marks}, "format": "True/False",
                 "questions": [{{"q_num": 1, "type": "true_false", "question": "Question text here", "options": ["True", "False"], "marks": 1, "answer": "True"}}]
             }}
             """
 
         elif "mcq" in format_clean or "quiz" in format_clean:
             prompt = f"""
-            Create a {difficulty} exam on '{topic}' containing EXACTLY 15 MCQ questions (1 mark each).
+            Create a {difficulty} exam on '{topic}' containing EXACTLY {actual_marks} MCQ questions (1 mark each).
             
             {strict_rules}
-            REQUIREMENT: You must generate EXACTLY 15 items in the 'questions' array (q_num: 1 to 15).
+            REQUIREMENT: You must generate EXACTLY {actual_marks} items in the 'questions' array (q_num: 1 to {actual_marks}).
             
             Return ONLY valid JSON.
             Schema:
             {{
-                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": 15, "format": "MCQ",
+                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {actual_marks}, "format": "MCQ",
                 "questions": [{{"q_num": 1, "type": "mcq", "question": "Question text here", "options": ["A) 1", "B) 2", "C) 3", "D) 4"], "answer": "A) 1", "marks": 1}}]
             }}
             """
 
         elif "short" in format_clean:
+            count = max(1, actual_marks // 2)
             prompt = f"""
-            Create a {difficulty} exam on '{topic}' containing EXACTLY 15 Short Answer questions (2 marks each = 30 marks total).
+            Create a {difficulty} exam on '{topic}' containing EXACTLY {count} Short Answer questions (2 marks each = {count * 2} marks total).
             
             {strict_rules}
-            REQUIREMENT: You must generate EXACTLY 15 items in the 'questions' array (q_num: 1 to 15).
+            REQUIREMENT: You must generate EXACTLY {count} items in the 'questions' array (q_num: 1 to {count}).
             
             Do NOT include options array. Maximum 180 characters allowed per response.
             Return ONLY valid JSON.
             Schema:
             {{
-                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": 30, "format": "Short Answers",
+                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {count * 2}, "format": "Short Answers",
                 "questions": [{{"q_num": 1, "type": "short_answer", "question": "Question text here", "marks": 2, "max_characters": 180, "expected_answer": "Answer here"}}]
             }}
             """
 
         elif "fill" in format_clean or "blank" in format_clean:
             prompt = f"""
-            Create a {difficulty} exam on '{topic}' containing EXACTLY 15 Fill in the Blank questions (1 mark each = 15 marks total).
+            Create a {difficulty} exam on '{topic}' containing EXACTLY {actual_marks} Fill in the Blank questions (1 mark each = {actual_marks} marks total).
             
             {strict_rules}
-            REQUIREMENT: You must generate EXACTLY 15 items in the 'questions' array (q_num: 1 to 15).
+            REQUIREMENT: You must generate EXACTLY {actual_marks} items in the 'questions' array (q_num: 1 to {actual_marks}).
             
             Do NOT include options array.
             Return ONLY valid JSON.
             Schema:
             {{
-                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": 15, "format": "Fill in the Blanks",
+                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {actual_marks}, "format": "Fill in the Blanks",
                 "questions": [{{"q_num": 1, "type": "fill_in_the_blank", "question": "Question with a blank here", "marks": 1, "answer": "Answer"}}]
             }}
             """
 
         else:
-            dist = self._calculate_mixed_distribution()
+            dist = self._calculate_mixed_distribution(actual_marks)
             total_q_count = sum(dist.values())
-            calculated_total_marks = (dist["mcq"] * 1) + (dist["true_false"] * 1) + (dist["fill_in_the_blank"] * 1) + (dist["short_answer"] * 2) + (dist["long_answer"] * 4)
-
+            
             prompt = f"""
-            Create a {difficulty} exam on '{topic}' containing EXACTLY 15 questions of EACH type ({total_q_count} questions total).
+            Create a {difficulty} exam on '{topic}' for EXACTLY {actual_marks} marks.
             
             {strict_rules}
             REQUIREMENT: You MUST generate EXACTLY {total_q_count} questions total:
@@ -245,12 +296,12 @@ class FacultyAIController:
             - {dist['true_false']} True/False questions (type: "true_false", 1 mark each)
             - {dist['fill_in_the_blank']} Fill in the Blanks (type: "fill_in_the_blank", 1 mark each)
             - {dist['short_answer']} Short Answer questions (type: "short_answer", 2 marks each)
-            - {dist['long_answer']} Long Answer questions (type: "long_answer", 4 marks each)
+            - {dist['long_answer']} Long Answer questions (type: "long_answer", 5 marks each)
 
             Return ONLY valid JSON.
             Schema:
             {{
-                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {calculated_total_marks}, "format": "Mixed",
+                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {actual_marks}, "format": "Mixed",
                 "questions": [
                     {{"q_num": 1, "type": "mcq", "question": "Question 1", "options": ["A) 1", "B) 2", "C) 3", "D) 4"], "marks": 1, "answer": "A) 1"}}
                 ]
