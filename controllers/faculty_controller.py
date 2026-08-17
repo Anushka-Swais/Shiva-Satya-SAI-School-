@@ -129,7 +129,7 @@ class FacultyAIController:
             
         return response.text.replace("```json", "").replace("```", "").strip()
 
-    # --- BULLETPROOF QUESTION PAPER GENERATOR (BOUNDARY INJECTION) ---
+    # --- BULLETPROOF QUESTION PAPER GENERATOR ---
     def generate_question_paper(self, topic: str, difficulty: str, format_type: str = "all", num_questions: int = 0, user_email: str = "", client_name: str = "", total_marks: int = 50):
         # We explicitly set the requested question count to exactly match the marks slider selection
         target_question_count = int(num_questions) if (int(num_questions) > 0 and int(total_marks) == 50) else int(total_marks)
@@ -139,148 +139,152 @@ class FacultyAIController:
         format_clean = str(format_type).lower().strip() if format_type else "all"
         is_mixed_mode = format_clean in ["all", "all type", "all types", "mixed", "mixed type", "optional", "", "none"]
         
-        # New Anti-Lazy Strategy: Force explicit numbering without the bloated JSON array
+        # We mathematically force the LLM to see the exact sequential list it must complete
+        q_numbers_list = list(range(1, target_question_count + 1))
+        
         strict_rules = f"""
-        !!! CRITICAL ANTI-TRUNCATION INSTRUCTION !!!
-        You MUST generate EXACTLY {target_question_count} questions. 
-        Do NOT stop early. Do NOT output 3 or 5 questions and assume the rest. 
-        You MUST sequentially number 'q_num' from 1 all the way up to {target_question_count}.
-        The very last object in your 'questions' array MUST be "q_num": {target_question_count}.
-        Keep your questions and options concise so you do not exceed token limits, but do NOT skip any question.
+        !!! CRITICAL ANTI-LAZY INSTRUCTIONS !!!
+        1. You MUST generate EXACTLY {target_question_count} questions. 
+        2. The 'q_num' field MUST increment sequentially and perfectly match this list: {q_numbers_list}.
+        3. DO NOT stop early. DO NOT output partial arrays. DO NOT use placeholders like "..." for questions.
+        4. Keep questions extremely concise (max 1 sentence) to prevent output API truncation.
+        5. Your final output MUST contain exactly {target_question_count} JSON objects in the 'questions' list.
         """
 
         if is_mixed_mode:
             dist = self._calculate_mixed_distribution(target_question_count)
             
-            # Calculate explicit boundaries to anchor the LLM's sequence logic
-            mcq_end = dist['mcq']
-            tf_start = mcq_end + 1
-            tf_end = tf_start + dist['true_false'] - 1
-            fib_start = tf_end + 1
-            fib_end = fib_start + dist['fill_in_the_blank'] - 1
-            sa_start = fib_end + 1
-            sa_end = sa_start + dist['short_answer'] - 1
-            la_start = sa_end + 1
-            la_end = la_start + dist['long_answer'] - 1
-            
             prompt = f"""
-            Act as an expert school exam setter. Create a {difficulty} exam paper for '{topic}'.
+            Act as an expert school exam setter. Create a '{difficulty}' exam paper for '{topic}'.
 
             {strict_rules}
             
-            You MUST follow this EXACT numbering sequence checklist for the {target_question_count} questions:
-            - Questions 1 to {mcq_end}: EXACTLY {dist['mcq']} MCQs (type: "mcq", marks: 1)
-            - Questions {tf_start} to {tf_end}: EXACTLY {dist['true_false']} True/False questions (type: "true_false", marks: 1)
-            - Questions {fib_start} to {fib_end}: EXACTLY {dist['fill_in_the_blank']} Fill in the Blanks (type: "fill_in_the_blank", marks: 1)
-            - Questions {sa_start} to {sa_end}: EXACTLY {dist['short_answer']} Short Answers (type: "short_answer", marks: 1)
-            - Questions {la_start} to {la_end}: EXACTLY {dist['long_answer']} Long Answers (type: "long_answer", marks: 1)
-
-            STRICT JSON RULES:
-            1. For 'mcq', include "options": ["A) ...", "B) ...", "C) ...", "D) ..."]
-            2. For 'true_false', include "options": ["True", "False"]
-            3. For 'fill_in_the_blank', 'short_answer', and 'long_answer', DO NOT include an 'options' field at all!
+            QUESTION DISTRIBUTION (Total {target_question_count} questions):
+            - {dist['mcq']} MCQs (type: "mcq")
+            - {dist['true_false']} True/False questions (type: "true_false")
+            - {dist['fill_in_the_blank']} Fill in the Blanks (type: "fill_in_the_blank")
+            - {dist['short_answer']} Short Answers (type: "short_answer")
+            - {dist['long_answer']} Long Answers (type: "long_answer")
 
             Return ONLY valid JSON format without markdown code fences.
-            Schema:
+
+            OVERALL JSON STRUCTURE:
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
                 "total_marks": {target_question_count},
                 "format": "Mixed",
-                "questions": [
-                    {{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "marks": 1, "answer": "..."}},
-                    // ... Generate ALL {target_question_count} questions sequentially following the boundaries above ...
-                    {{"q_num": {target_question_count}, "type": "long_answer", "question": "...", "marks": 1, "max_characters": 2000, "expected_answer": "..."}}
-                ]
+                "questions": [ /* Insert all {target_question_count} question objects here */ ]
             }}
+
+            OBJECT SCHEMAS (use the matching schema based on the question type):
+            
+            For "mcq":
+            {{"q_num": <num>, "type": "mcq", "question": "<short text>", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "marks": 1, "answer": "<correct option>"}}
+
+            For "true_false":
+            {{"q_num": <num>, "type": "true_false", "question": "<short text>", "options": ["True", "False"], "marks": 1, "answer": "<correct option>"}}
+
+            For "fill_in_the_blank":
+            {{"q_num": <num>, "type": "fill_in_the_blank", "question": "<short text with blank>", "marks": 1, "answer": "<answer>"}}
+
+            For "short_answer":
+            {{"q_num": <num>, "type": "short_answer", "question": "<short text>", "marks": 1, "max_characters": 180, "expected_answer": "<answer>"}}
+
+            For "long_answer":
+            {{"q_num": <num>, "type": "long_answer", "question": "<short text>", "marks": 1, "max_characters": 2000, "expected_answer": "<answer>"}}
             """
 
         elif "true" in format_clean or "false" in format_clean or "tf" in format_clean:
             prompt = f"""
-            Create a {difficulty} exam on '{topic}'.
+            Create a '{difficulty}' exam on '{topic}'.
             
             {strict_rules}
             
-            REQUIREMENT: Questions 1 to {target_question_count} MUST ALL be True/False questions (marks: 1 each).
+            REQUIREMENT: ALL {target_question_count} questions MUST be True/False questions (marks: 1 each).
             
-            Return ONLY valid JSON.
-            Schema:
+            Return ONLY valid JSON format without markdown code fences.
+            
+            OVERALL JSON STRUCTURE:
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
                 "total_marks": {target_question_count},
                 "format": "True/False",
-                "questions": [
-                    {{"q_num": 1, "type": "true_false", "question": "...", "options": ["True", "False"], "marks": 1, "answer": "True"}},
-                    // ... Must reach q_num {target_question_count} ...
-                ]
+                "questions": [ /* Insert all {target_question_count} question objects here */ ]
             }}
+
+            STRUCTURE FOR EACH QUESTION OBJECT:
+            {{"q_num": <num>, "type": "true_false", "question": "<short text>", "options": ["True", "False"], "marks": 1, "answer": "<correct option>"}}
             """
 
         elif "mcq" in format_clean or "quiz" in format_clean:
             prompt = f"""
-            Create a {difficulty} exam on '{topic}'.
+            Create a '{difficulty}' exam on '{topic}'.
             
             {strict_rules}
             
-            REQUIREMENT: Questions 1 to {target_question_count} MUST ALL be MCQ questions (marks: 1 each).
+            REQUIREMENT: ALL {target_question_count} questions MUST be MCQ questions (marks: 1 each).
             
-            Return ONLY valid JSON.
-            Schema:
+            Return ONLY valid JSON format without markdown code fences.
+            
+            OVERALL JSON STRUCTURE:
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
                 "total_marks": {target_question_count},
                 "format": "MCQ",
-                "questions": [
-                    {{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "marks": 1, "answer": "..."}},
-                    // ... Must reach q_num {target_question_count} ...
-                ]
+                "questions": [ /* Insert all {target_question_count} question objects here */ ]
             }}
+
+            STRUCTURE FOR EACH QUESTION OBJECT:
+            {{"q_num": <num>, "type": "mcq", "question": "<short text>", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "marks": 1, "answer": "<correct option>"}}
             """
 
         elif "short" in format_clean:
             prompt = f"""
-            Create a {difficulty} exam on '{topic}'.
+            Create a '{difficulty}' exam on '{topic}'.
             
             {strict_rules}
             
-            REQUIREMENT: Questions 1 to {target_question_count} MUST ALL be Short Answer questions (marks: 1 each).
+            REQUIREMENT: ALL {target_question_count} questions MUST be Short Answer questions (marks: 1 each).
             
-            Return ONLY valid JSON.
-            Schema:
+            Return ONLY valid JSON format without markdown code fences.
+            
+            OVERALL JSON STRUCTURE:
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
                 "total_marks": {target_question_count},
                 "format": "Short Answers",
-                "questions": [
-                    {{"q_num": 1, "type": "short_answer", "question": "...", "marks": 1, "max_characters": 180, "expected_answer": "..."}},
-                    // ... Must reach q_num {target_question_count} ...
-                ]
+                "questions": [ /* Insert all {target_question_count} question objects here */ ]
             }}
+
+            STRUCTURE FOR EACH QUESTION OBJECT:
+            {{"q_num": <num>, "type": "short_answer", "question": "<short text>", "marks": 1, "max_characters": 180, "expected_answer": "<answer>"}}
             """
 
         elif "fill" in format_clean or "blank" in format_clean:
             prompt = f"""
-            Create a {difficulty} exam on '{topic}'.
+            Create a '{difficulty}' exam on '{topic}'.
             
             {strict_rules}
             
-            REQUIREMENT: Questions 1 to {target_question_count} MUST ALL be Fill in the Blank questions (marks: 1 each).
+            REQUIREMENT: ALL {target_question_count} questions MUST be Fill in the Blank questions (marks: 1 each).
             
-            Return ONLY valid JSON.
-            Schema:
+            Return ONLY valid JSON format without markdown code fences.
+            
+            OVERALL JSON STRUCTURE:
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
                 "total_marks": {target_question_count},
                 "format": "Fill in the Blanks",
-                "questions": [
-                    {{"q_num": 1, "type": "fill_in_the_blank", "question": "...", "marks": 1, "answer": "..."}},
-                    // ... Must reach q_num {target_question_count} ...
-                ]
+                "questions": [ /* Insert all {target_question_count} question objects here */ ]
             }}
+
+            STRUCTURE FOR EACH QUESTION OBJECT:
+            {{"q_num": <num>, "type": "fill_in_the_blank", "question": "<short text with blank>", "marks": 1, "answer": "<answer>"}}
             """
 
         response = client.models.generate_content(model=model_name, contents=prompt)
@@ -356,33 +360,5 @@ class FacultyAIController:
             log_gemini_usage(db, response, client_name, user_email, "Faculty Dashboard", "Fetch Exam Structure")
         finally:
             db.close()
-            
-        return response.text.replace("```json", "").replace("```", "").strip()
 
-    def generate_competitive_content(self, exam_type: str, class_level: str, subject: str, topic: str, content_type: str, user_email: str, client_name: str):
-        prompt = f"""
-        Act as an expert coaching instructor for the {exam_type} exam in India.
-        Create '{content_type}' for a student in Class {class_level} focusing on the subject '{subject}' and the topic '{topic}'.
-        Since the student is in Class {class_level}, ensure the difficulty is at a 'Foundation' level—building core concepts that will help them later in their actual {exam_type} exam.
-
-        Return ONLY valid JSON format. Do not use markdown blocks.
-        """
-        
-        if content_type.lower() == "quiz":
-            prompt += f"""
-            Schema: {{"exam": "{exam_type}", "topic": "{topic}", "questions": [{{"question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "correct_answer": "...", "explanation": "..."}}]}}
-            """
-        else:
-            prompt += f"""
-            Schema: {{"exam": "{exam_type}", "topic": "{topic}", "core_concepts": ["...", "..."], "detailed_notes": "...", "important_formulas_or_facts": ["...", "..."]}}
-            """
-            
-        response = client.models.generate_content(model=model_name, contents=prompt)
-        
-        db = SessionLocal()
-        try:
-            log_gemini_usage(db, response, client_name, user_email, "Faculty Dashboard", f"Generate Competitive {content_type}")
-        finally:
-            db.close()
-            
         return response.text.replace("```json", "").replace("```", "").strip()
