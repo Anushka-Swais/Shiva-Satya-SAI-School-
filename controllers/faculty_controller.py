@@ -147,9 +147,7 @@ class FacultyAIController:
         return response.text.replace("```json", "").replace("```", "").strip()
 
     # --- BULLETPROOF QUESTION PAPER GENERATOR ---
-   # --- BULLETPROOF QUESTION PAPER GENERATOR ---
     def generate_question_paper(self, topic: str, difficulty: str, format_type: str = "all", num_questions: int = 0, user_email: str = "", client_name: str = "", total_marks: int = 50):
-        
         # FIX: Ensure we capture the marks correctly even if the frontend passes it via 'num_questions'
         actual_marks = int(num_questions) if (int(num_questions) > 0 and int(total_marks) == 50) else int(total_marks)
         
@@ -161,19 +159,21 @@ class FacultyAIController:
         
         if is_mixed_mode:
             dist = self._calculate_mixed_distribution(actual_marks)
-            # FIX: Calculate exact total question count to prevent LLM lazy generation
             total_q_count = sum(dist.values())
             
             prompt = f"""
             Act as an expert school exam setter. Create a {difficulty} exam paper for '{topic}' totaling EXACTLY {actual_marks} marks.
 
-            CRITICAL REQUIREMENT: You MUST generate EXACTLY {total_q_count} questions in total. Do NOT stop early!
+            CRITICAL AND STRICT REQUIREMENT: You MUST generate EXACTLY {total_q_count} questions in total. 
+            Do NOT stop early. Do NOT use placeholders. You must write out all {total_q_count} questions fully in the JSON array.
+            Ensure 'q_num' increments starting from 1 up to exactly {total_q_count}.
+
             Generate a single flat array called 'questions' containing EXACTLY:
             - {dist['mcq']} MCQs (type: "mcq", 1 mark each)
             - {dist['true_false']} True/False questions (type: "true_false", 1 mark each)
             - {dist['fill_in_the_blank']} Fill in the Blanks (type: "fill_in_the_blank", 1 mark each)
-            - {dist['short_answer']} Short Answer questions (type: "short_answer", 2 marks each, response max 180 chars)
-            - {dist['long_answer']} Long Answer questions (type: "long_answer", 4 marks each, response max 2000 chars)
+            - {dist['short_answer']} Short Answer questions (type: "short_answer", 2 marks each)
+            - {dist['long_answer']} Long Answer questions (type: "long_answer", 4 marks each)
 
             STRICT JSON RULES:
             1. For 'mcq', include "options": ["A) ...", "B) ...", "C) ...", "D) ..."]
@@ -188,8 +188,8 @@ class FacultyAIController:
                 "total_marks": {actual_marks},
                 "format": "Mixed",
                 "questions": [
-                    {{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "marks": 1, "answer": "..."}},
-                    {{"q_num": 2, "type": "short_answer", "question": "...", "marks": 2, "max_characters": 180, "expected_answer": "..."}}
+                    {{"q_num": 1, "type": "mcq", "question": "Write the first question here", "options": ["A) 1", "B) 2", "C) 3", "D) 4"], "marks": 1, "answer": "A) 1"}},
+                    {{"q_num": 2, "type": "short_answer", "question": "Write the second question here", "marks": 2, "max_characters": 180, "expected_answer": "Answer here"}}
                 ]
             }}
             """
@@ -198,13 +198,14 @@ class FacultyAIController:
             prompt = f"""
             Create a {difficulty} exam on '{topic}' containing EXACTLY {actual_marks} True/False questions (1 mark each).
             
-            CRITICAL REQUIREMENT: You MUST generate EXACTLY {actual_marks} items in the 'questions' array. Do not stop early.
+            CRITICAL REQUIREMENT: You MUST generate EXACTLY {actual_marks} objects in the 'questions' array. 
+            Do NOT stop early. Ensure 'q_num' increments from 1 up to exactly {actual_marks}.
             
             Return ONLY valid JSON.
             Schema:
             {{
                 "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {actual_marks}, "format": "True/False",
-                "questions": [{{"q_num": 1, "type": "true_false", "question": "...", "options": ["True", "False"], "marks": 1, "answer": "..."}}]
+                "questions": [{{"q_num": 1, "type": "true_false", "question": "Question text here", "options": ["True", "False"], "marks": 1, "answer": "True"}}]
             }}
             """
 
@@ -212,13 +213,14 @@ class FacultyAIController:
             prompt = f"""
             Create a {difficulty} exam on '{topic}' containing EXACTLY {actual_marks} MCQ questions (1 mark each).
             
-            CRITICAL REQUIREMENT: You MUST generate EXACTLY {actual_marks} items in the 'questions' array. Do not stop early.
+            CRITICAL REQUIREMENT: You MUST generate EXACTLY {actual_marks} objects in the 'questions' array. 
+            Do NOT stop early. Ensure 'q_num' increments from 1 up to exactly {actual_marks}.
             
             Return ONLY valid JSON.
             Schema:
             {{
                 "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {actual_marks}, "format": "MCQ",
-                "questions": [{{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "answer": "...", "marks": 1}}]
+                "questions": [{{"q_num": 1, "type": "mcq", "question": "Question text here", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "answer": "A) ...", "marks": 1}}]
             }}
             """
 
@@ -227,14 +229,15 @@ class FacultyAIController:
             prompt = f"""
             Create a {difficulty} exam on '{topic}' containing EXACTLY {count} Short Answer questions (2 marks each = {count * 2} marks total).
             
-            CRITICAL REQUIREMENT: You MUST generate EXACTLY {count} items in the 'questions' array. Do not stop early.
+            CRITICAL REQUIREMENT: You MUST generate EXACTLY {count} objects in the 'questions' array. 
+            Do NOT stop early. Ensure 'q_num' increments from 1 up to exactly {count}.
             
             Do NOT include options array. Maximum 180 characters allowed per response.
             Return ONLY valid JSON.
             Schema:
             {{
                 "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {count * 2}, "format": "Short Answers",
-                "questions": [{{"q_num": 1, "type": "short_answer", "question": "...", "marks": 2, "max_characters": 180, "expected_answer": "..."}}]
+                "questions": [{{"q_num": 1, "type": "short_answer", "question": "Question text here", "marks": 2, "max_characters": 180, "expected_answer": "Answer here"}}]
             }}
             """
 
@@ -242,14 +245,15 @@ class FacultyAIController:
             prompt = f"""
             Create a {difficulty} exam on '{topic}' containing EXACTLY {actual_marks} Fill in the Blank questions (1 mark each).
             
-            CRITICAL REQUIREMENT: You MUST generate EXACTLY {actual_marks} items in the 'questions' array. Do not stop early.
+            CRITICAL REQUIREMENT: You MUST generate EXACTLY {actual_marks} objects in the 'questions' array. 
+            Do NOT stop early. Ensure 'q_num' increments from 1 up to exactly {actual_marks}.
             
             Do NOT include options array.
             Return ONLY valid JSON.
             Schema:
             {{
                 "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {actual_marks}, "format": "Fill in the Blanks",
-                "questions": [{{"q_num": 1, "type": "fill_in_the_blank", "question": "...", "marks": 1, "answer": "..."}}]
+                "questions": [{{"q_num": 1, "type": "fill_in_the_blank", "question": "Question with a blank here", "marks": 1, "answer": "Answer"}}]
             }}
             """
 
@@ -259,7 +263,10 @@ class FacultyAIController:
             prompt = f"""
             Create a {difficulty} exam on '{topic}' for EXACTLY {actual_marks} marks containing a mix of MCQs, True/False, Fill in Blanks, Short and Long answers.
             
-            CRITICAL REQUIREMENT: You MUST strictly generate EXACTLY {total_q_count} questions in total in the 'questions' array. Do NOT stop early!
+            CRITICAL AND STRICT REQUIREMENT: You MUST strictly generate EXACTLY {total_q_count} questions in total in the 'questions' array. 
+            Do NOT stop early! Do NOT use placeholders. Write out all {total_q_count} questions fully. 
+            Ensure 'q_num' increments from 1 up to exactly {total_q_count}.
+            
             - {dist['mcq']} MCQs (type: "mcq", 1 mark each)
             - {dist['true_false']} True/False questions (type: "true_false", 1 mark each)
             - {dist['fill_in_the_blank']} Fill in the Blanks (type: "fill_in_the_blank", 1 mark each)
@@ -271,8 +278,8 @@ class FacultyAIController:
             {{
                 "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {actual_marks}, "format": "Mixed",
                 "questions": [
-                    {{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "marks": 1, "answer": "..."}},
-                    {{"q_num": 2, "type": "short_answer", "question": "...", "marks": 2, "max_characters": 180, "expected_answer": "..."}}
+                    {{"q_num": 1, "type": "mcq", "question": "Write the first question here", "options": ["A) 1", "B) 2", "C) 3", "D) 4"], "marks": 1, "answer": "A) 1"}},
+                    {{"q_num": 2, "type": "short_answer", "question": "Write the second question here", "marks": 2, "max_characters": 180, "expected_answer": "Answer here"}}
                 ]
             }}
             """
@@ -286,7 +293,7 @@ class FacultyAIController:
             db.close()
             
         return response.text.replace("```json", "").replace("```", "").strip()
-    
+
     def auto_correct_answer(self, question: str, student_answer: str, rubric: str, user_email: str, client_name: str):
         prompt = f"""
         Grade this student answer based on the rubric.
