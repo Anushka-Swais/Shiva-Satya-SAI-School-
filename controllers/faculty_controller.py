@@ -42,7 +42,7 @@ class FacultyAIController:
     # --- PYTHON MATH HELPER FOR DYNAMIC MARKS BREAKDOWN ---
     def _calculate_mixed_distribution(self, total_marks: int) -> dict:
         """Calculates exact question counts mathematically matching the total marks requested."""
-        # Exact mapping for 50 Marks as requested
+        # Exact mapping for 50 Marks (Yields exactly 25 questions total)
         if total_marks == 50:
             return {
                 "mcq": 5,              # 5 x 1m = 5
@@ -52,7 +52,7 @@ class FacultyAIController:
                 "long_answer": 5       # 5 x 5m = 25
             }                          # Total  = 50
             
-        # Exact mapping for 30 Marks
+        # Exact mapping for 30 Marks (Yields exactly 21 questions total)
         elif total_marks == 30:
             return {
                 "mcq": 5,              # 5 x 1m = 5
@@ -62,7 +62,7 @@ class FacultyAIController:
                 "long_answer": 1       # 1 x 5m = 5
             }                          # Total  = 30
             
-        # Exact mapping for 20 Marks
+        # Exact mapping for 20 Marks (Yields exactly 15 questions total)
         elif total_marks == 20:
             return {
                 "mcq": 4,              # 4 x 1m = 4
@@ -167,7 +167,7 @@ class FacultyAIController:
             
         return response.text.replace("```json", "").replace("```", "").strip()
 
-    # --- BULLETPROOF QUESTION PAPER GENERATOR ---
+    # --- BULLETPROOF QUESTION PAPER GENERATOR (SKELETON INJECTION) ---
     def generate_question_paper(self, topic: str, difficulty: str, format_type: str = "all", num_questions: int = 0, user_email: str = "", client_name: str = "", total_marks: int = 50):
         actual_marks = int(num_questions) if (int(num_questions) > 0 and int(total_marks) == 50) else int(total_marks)
         if actual_marks <= 0:
@@ -176,135 +176,134 @@ class FacultyAIController:
         format_clean = str(format_type).lower().strip() if format_type else "all"
         is_mixed_mode = format_clean in ["all", "all type", "all types", "mixed", "mixed type", "optional", "", "none"]
         
-        # Anti-lazy generation guardrail
-        strict_rules = """
-        !!! CRITICAL ANTI-LAZY INSTRUCTION !!!
-        You MUST generate every single requested question in full. 
-        DO NOT stop early. DO NOT generate sample questions. 
-        You must write out EVERY single question until the requested count is reached.
-        Number the 'q_num' field sequentially starting from 1.
-        DO NOT use placeholders like "..." or "etc".
-        """
+        skeleton = []
+        q_num = 1
 
         if is_mixed_mode:
             dist = self._calculate_mixed_distribution(actual_marks)
-            total_q_count = sum(dist.values())
+            
+            # Build an unbreakable JSON skeleton that the AI is FORCED to fill out
+            for _ in range(dist['mcq']):
+                skeleton.append({"q_num": q_num, "type": "mcq", "question": "[FILL_IN_QUESTION]", "options": ["[A] Option", "[B] Option", "[C] Option", "[D] Option"], "marks": 1, "answer": "[FILL_IN_ANSWER]"})
+                q_num += 1
+            for _ in range(dist['true_false']):
+                skeleton.append({"q_num": q_num, "type": "true_false", "question": "[FILL_IN_QUESTION]", "options": ["True", "False"], "marks": 1, "answer": "[FILL_IN_ANSWER]"})
+                q_num += 1
+            for _ in range(dist['fill_in_the_blank']):
+                skeleton.append({"q_num": q_num, "type": "fill_in_the_blank", "question": "[FILL_IN_QUESTION_WITH_BLANK]", "marks": 1, "answer": "[FILL_IN_ANSWER]"})
+                q_num += 1
+            for _ in range(dist['short_answer']):
+                skeleton.append({"q_num": q_num, "type": "short_answer", "question": "[FILL_IN_QUESTION]", "marks": 2, "max_characters": 180, "expected_answer": "[FILL_IN_ANSWER]"})
+                q_num += 1
+            for _ in range(dist['long_answer']):
+                skeleton.append({"q_num": q_num, "type": "long_answer", "question": "[FILL_IN_QUESTION]", "marks": 5, "max_characters": 2000, "expected_answer": "[FILL_IN_ANSWER]"})
+                q_num += 1
             
             prompt = f"""
             Act as an expert school exam setter. Create a {difficulty} exam paper for '{topic}'.
 
-            {strict_rules}
+            CRITICAL ANTI-TRUNCATION INSTRUCTION:
+            You MUST complete the following JSON structure EXACTLY as it is provided. 
+            Replace every "[FILL_IN_...]" placeholder with a real, high-quality question/answer.
+            DO NOT skip, remove, or shorten any part of the array. You must return all {q_num - 1} questions.
             
-            REQUIREMENT: You MUST generate EXACTLY {total_q_count} questions in total in the 'questions' array, perfectly matching these totals:
-            - {dist['mcq']} MCQs (type: "mcq", 1 mark each)
-            - {dist['true_false']} True/False questions (type: "true_false", 1 mark each)
-            - {dist['fill_in_the_blank']} Fill in the Blanks (type: "fill_in_the_blank", 1 mark each)
-            - {dist['short_answer']} Short Answer questions (type: "short_answer", 2 marks each, response max 180 chars)
-            - {dist['long_answer']} Long Answer questions (type: "long_answer", 5 marks each, response max 2000 chars)
-
-            STRICT JSON RULES:
-            1. For 'mcq', include "options": ["A) ...", "B) ...", "C) ...", "D) ..."]
-            2. For 'true_false', include "options": ["True", "False"]
-            3. For 'fill_in_the_blank', 'short_answer', and 'long_answer', DO NOT include an 'options' field at all!
-
-            Return ONLY valid JSON format without markdown code fences.
-            Schema:
+            Return ONLY valid JSON. Do not include markdown blocks.
+            
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
                 "total_marks": {actual_marks},
                 "format": "Mixed",
-                "questions": [
-                    {{"q_num": 1, "type": "mcq", "question": "Question text here", "options": ["A) Option 1", "B) Option 2", "C) Option 3", "D) Option 4"], "marks": 1, "answer": "A) Option 1"}}
-                ]
+                "questions": {json.dumps(skeleton, indent=4)}
             }}
             """
 
         elif "true" in format_clean or "false" in format_clean or "tf" in format_clean:
+            # Force minimum 15 questions for single formats to ensure proper test length
+            count = max(15, actual_marks)
+            actual_marks = count
+            for i in range(1, count + 1):
+                skeleton.append({"q_num": i, "type": "true_false", "question": "[FILL_IN_QUESTION]", "options": ["True", "False"], "marks": 1, "answer": "[FILL_IN_ANSWER]"})
+            
             prompt = f"""
-            Create a {difficulty} exam on '{topic}' containing EXACTLY {actual_marks} True/False questions (1 mark each).
+            Create a {difficulty} exam on '{topic}'.
             
-            {strict_rules}
-            REQUIREMENT: You must generate EXACTLY {actual_marks} items in the 'questions' array (q_num: 1 to {actual_marks}).
+            CRITICAL ANTI-TRUNCATION INSTRUCTION:
+            You MUST complete the following JSON structure EXACTLY. Replace all placeholders.
+            DO NOT skip or remove items. Return ONLY valid JSON.
             
-            Return ONLY valid JSON.
-            Schema:
             {{
-                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {actual_marks}, "format": "True/False",
-                "questions": [{{"q_num": 1, "type": "true_false", "question": "Question text here", "options": ["True", "False"], "marks": 1, "answer": "True"}}]
+                "topic": "{topic}",
+                "difficulty": "{difficulty}",
+                "total_marks": {actual_marks},
+                "format": "True/False",
+                "questions": {json.dumps(skeleton, indent=4)}
             }}
             """
 
         elif "mcq" in format_clean or "quiz" in format_clean:
+            count = max(15, actual_marks)
+            actual_marks = count
+            for i in range(1, count + 1):
+                skeleton.append({"q_num": i, "type": "mcq", "question": "[FILL_IN_QUESTION]", "options": ["[A] Option", "[B] Option", "[C] Option", "[D] Option"], "marks": 1, "answer": "[FILL_IN_ANSWER]"})
+                
             prompt = f"""
-            Create a {difficulty} exam on '{topic}' containing EXACTLY {actual_marks} MCQ questions (1 mark each).
+            Create a {difficulty} exam on '{topic}'.
             
-            {strict_rules}
-            REQUIREMENT: You must generate EXACTLY {actual_marks} items in the 'questions' array (q_num: 1 to {actual_marks}).
+            CRITICAL ANTI-TRUNCATION INSTRUCTION:
+            You MUST complete the following JSON structure EXACTLY. Replace all placeholders.
+            DO NOT skip or remove items. Return ONLY valid JSON.
             
-            Return ONLY valid JSON.
-            Schema:
             {{
-                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {actual_marks}, "format": "MCQ",
-                "questions": [{{"q_num": 1, "type": "mcq", "question": "Question text here", "options": ["A) 1", "B) 2", "C) 3", "D) 4"], "answer": "A) 1", "marks": 1}}]
+                "topic": "{topic}",
+                "difficulty": "{difficulty}",
+                "total_marks": {actual_marks},
+                "format": "MCQ",
+                "questions": {json.dumps(skeleton, indent=4)}
             }}
             """
 
         elif "short" in format_clean:
-            count = max(1, actual_marks // 2)
+            count = max(15, actual_marks // 2)
+            actual_marks = count * 2
+            for i in range(1, count + 1):
+                skeleton.append({"q_num": i, "type": "short_answer", "question": "[FILL_IN_QUESTION]", "marks": 2, "max_characters": 180, "expected_answer": "[FILL_IN_ANSWER]"})
+                
             prompt = f"""
-            Create a {difficulty} exam on '{topic}' containing EXACTLY {count} Short Answer questions (2 marks each = {count * 2} marks total).
+            Create a {difficulty} exam on '{topic}'.
             
-            {strict_rules}
-            REQUIREMENT: You must generate EXACTLY {count} items in the 'questions' array (q_num: 1 to {count}).
+            CRITICAL ANTI-TRUNCATION INSTRUCTION:
+            You MUST complete the following JSON structure EXACTLY. Replace all placeholders.
+            DO NOT skip or remove items. Return ONLY valid JSON.
             
-            Do NOT include options array. Maximum 180 characters allowed per response.
-            Return ONLY valid JSON.
-            Schema:
             {{
-                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {count * 2}, "format": "Short Answers",
-                "questions": [{{"q_num": 1, "type": "short_answer", "question": "Question text here", "marks": 2, "max_characters": 180, "expected_answer": "Answer here"}}]
+                "topic": "{topic}",
+                "difficulty": "{difficulty}",
+                "total_marks": {actual_marks},
+                "format": "Short Answers",
+                "questions": {json.dumps(skeleton, indent=4)}
             }}
             """
 
         elif "fill" in format_clean or "blank" in format_clean:
+            count = max(15, actual_marks)
+            actual_marks = count
+            for i in range(1, count + 1):
+                skeleton.append({"q_num": i, "type": "fill_in_the_blank", "question": "[FILL_IN_QUESTION_WITH_BLANK]", "marks": 1, "answer": "[FILL_IN_ANSWER]"})
+                
             prompt = f"""
-            Create a {difficulty} exam on '{topic}' containing EXACTLY {actual_marks} Fill in the Blank questions (1 mark each = {actual_marks} marks total).
+            Create a {difficulty} exam on '{topic}'.
             
-            {strict_rules}
-            REQUIREMENT: You must generate EXACTLY {actual_marks} items in the 'questions' array (q_num: 1 to {actual_marks}).
+            CRITICAL ANTI-TRUNCATION INSTRUCTION:
+            You MUST complete the following JSON structure EXACTLY. Replace all placeholders.
+            DO NOT skip or remove items. Return ONLY valid JSON.
             
-            Do NOT include options array.
-            Return ONLY valid JSON.
-            Schema:
             {{
-                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {actual_marks}, "format": "Fill in the Blanks",
-                "questions": [{{"q_num": 1, "type": "fill_in_the_blank", "question": "Question with a blank here", "marks": 1, "answer": "Answer"}}]
-            }}
-            """
-
-        else:
-            dist = self._calculate_mixed_distribution(actual_marks)
-            total_q_count = sum(dist.values())
-            
-            prompt = f"""
-            Create a {difficulty} exam on '{topic}' for EXACTLY {actual_marks} marks.
-            
-            {strict_rules}
-            REQUIREMENT: You MUST generate EXACTLY {total_q_count} questions total:
-            - {dist['mcq']} MCQs (type: "mcq", 1 mark each)
-            - {dist['true_false']} True/False questions (type: "true_false", 1 mark each)
-            - {dist['fill_in_the_blank']} Fill in the Blanks (type: "fill_in_the_blank", 1 mark each)
-            - {dist['short_answer']} Short Answer questions (type: "short_answer", 2 marks each)
-            - {dist['long_answer']} Long Answer questions (type: "long_answer", 5 marks each)
-
-            Return ONLY valid JSON.
-            Schema:
-            {{
-                "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {actual_marks}, "format": "Mixed",
-                "questions": [
-                    {{"q_num": 1, "type": "mcq", "question": "Question 1", "options": ["A) 1", "B) 2", "C) 3", "D) 4"], "marks": 1, "answer": "A) 1"}}
-                ]
+                "topic": "{topic}",
+                "difficulty": "{difficulty}",
+                "total_marks": {actual_marks},
+                "format": "Fill in the Blanks",
+                "questions": {json.dumps(skeleton, indent=4)}
             }}
             """
 
