@@ -148,15 +148,25 @@ class FacultyAIController:
 
     # --- BULLETPROOF QUESTION PAPER GENERATOR ---
     def generate_question_paper(self, topic: str, difficulty: str, format_type: str = "all", num_questions: int = 0, user_email: str = "", client_name: str = "", total_marks: int = 50):
-        # FIX: Ensure we capture the marks correctly even if the frontend passes it via 'num_questions'
+        # Determine actual marks. Trust total_marks first.
         actual_marks = int(num_questions) if (int(num_questions) > 0 and int(total_marks) == 50) else int(total_marks)
+        if actual_marks <= 0:
+            actual_marks = 50
         
-        # Normalize format string
         format_clean = str(format_type).lower().strip() if format_type else "all"
-        
-        # Treats empty, 'optional', 'all', 'mixed', 'all types' as Mixed mode
         is_mixed_mode = format_clean in ["all", "all type", "all types", "mixed", "mixed type", "optional", "", "none"]
         
+        # CRITICAL FIX: Aggressive anti-lazy generation instruction
+        strict_rules = f"""
+        !!! CRITICAL ANTI-LAZY INSTRUCTION !!!
+        You MUST generate the EXACT number of questions requested. 
+        DO NOT stop at 3, 5, or 10 questions. You must write out EVERY single question until the requested count is reached.
+        If you are asked for 30 questions, your JSON array MUST contain 30 fully fleshed-out objects.
+        If you are asked for 50 questions, your JSON array MUST contain 50 fully fleshed-out objects.
+        Number the 'q_num' field sequentially starting from 1 up to the exact total required.
+        DO NOT use placeholders like "..." or "etc". Write the complete JSON.
+        """
+
         if is_mixed_mode:
             dist = self._calculate_mixed_distribution(actual_marks)
             total_q_count = sum(dist.values())
@@ -164,16 +174,14 @@ class FacultyAIController:
             prompt = f"""
             Act as an expert school exam setter. Create a {difficulty} exam paper for '{topic}' totaling EXACTLY {actual_marks} marks.
 
-            CRITICAL AND STRICT REQUIREMENT: You MUST generate EXACTLY {total_q_count} questions in total. 
-            Do NOT stop early. Do NOT use placeholders. You must write out all {total_q_count} questions fully in the JSON array.
-            Ensure 'q_num' increments starting from 1 up to exactly {total_q_count}.
-
-            Generate a single flat array called 'questions' containing EXACTLY:
+            {strict_rules}
+            
+            REQUIREMENT: You must generate EXACTLY {total_q_count} questions in total in the 'questions' array.
             - {dist['mcq']} MCQs (type: "mcq", 1 mark each)
             - {dist['true_false']} True/False questions (type: "true_false", 1 mark each)
             - {dist['fill_in_the_blank']} Fill in the Blanks (type: "fill_in_the_blank", 1 mark each)
-            - {dist['short_answer']} Short Answer questions (type: "short_answer", 2 marks each)
-            - {dist['long_answer']} Long Answer questions (type: "long_answer", 4 marks each)
+            - {dist['short_answer']} Short Answer questions (type: "short_answer", 2 marks each, response max 180 chars)
+            - {dist['long_answer']} Long Answer questions (type: "long_answer", 4 marks each, response max 2000 chars)
 
             STRICT JSON RULES:
             1. For 'mcq', include "options": ["A) ...", "B) ...", "C) ...", "D) ..."]
@@ -181,15 +189,14 @@ class FacultyAIController:
             3. For 'fill_in_the_blank', 'short_answer', and 'long_answer', DO NOT include an 'options' field at all!
 
             Return ONLY valid JSON format without markdown code fences.
-            Schema Example:
+            Schema:
             {{
                 "topic": "{topic}",
                 "difficulty": "{difficulty}",
                 "total_marks": {actual_marks},
                 "format": "Mixed",
                 "questions": [
-                    {{"q_num": 1, "type": "mcq", "question": "Write the first question here", "options": ["A) 1", "B) 2", "C) 3", "D) 4"], "marks": 1, "answer": "A) 1"}},
-                    {{"q_num": 2, "type": "short_answer", "question": "Write the second question here", "marks": 2, "max_characters": 180, "expected_answer": "Answer here"}}
+                    {{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "marks": 1, "answer": "..."}}
                 ]
             }}
             """
@@ -198,8 +205,8 @@ class FacultyAIController:
             prompt = f"""
             Create a {difficulty} exam on '{topic}' containing EXACTLY {actual_marks} True/False questions (1 mark each).
             
-            CRITICAL REQUIREMENT: You MUST generate EXACTLY {actual_marks} objects in the 'questions' array. 
-            Do NOT stop early. Ensure 'q_num' increments from 1 up to exactly {actual_marks}.
+            {strict_rules}
+            REQUIREMENT: You must generate EXACTLY {actual_marks} items in the 'questions' array.
             
             Return ONLY valid JSON.
             Schema:
@@ -213,8 +220,8 @@ class FacultyAIController:
             prompt = f"""
             Create a {difficulty} exam on '{topic}' containing EXACTLY {actual_marks} MCQ questions (1 mark each).
             
-            CRITICAL REQUIREMENT: You MUST generate EXACTLY {actual_marks} objects in the 'questions' array. 
-            Do NOT stop early. Ensure 'q_num' increments from 1 up to exactly {actual_marks}.
+            {strict_rules}
+            REQUIREMENT: You must generate EXACTLY {actual_marks} items in the 'questions' array.
             
             Return ONLY valid JSON.
             Schema:
@@ -229,8 +236,8 @@ class FacultyAIController:
             prompt = f"""
             Create a {difficulty} exam on '{topic}' containing EXACTLY {count} Short Answer questions (2 marks each = {count * 2} marks total).
             
-            CRITICAL REQUIREMENT: You MUST generate EXACTLY {count} objects in the 'questions' array. 
-            Do NOT stop early. Ensure 'q_num' increments from 1 up to exactly {count}.
+            {strict_rules}
+            REQUIREMENT: You must generate EXACTLY {count} items in the 'questions' array.
             
             Do NOT include options array. Maximum 180 characters allowed per response.
             Return ONLY valid JSON.
@@ -245,8 +252,8 @@ class FacultyAIController:
             prompt = f"""
             Create a {difficulty} exam on '{topic}' containing EXACTLY {actual_marks} Fill in the Blank questions (1 mark each).
             
-            CRITICAL REQUIREMENT: You MUST generate EXACTLY {actual_marks} objects in the 'questions' array. 
-            Do NOT stop early. Ensure 'q_num' increments from 1 up to exactly {actual_marks}.
+            {strict_rules}
+            REQUIREMENT: You must generate EXACTLY {actual_marks} items in the 'questions' array.
             
             Do NOT include options array.
             Return ONLY valid JSON.
@@ -263,10 +270,8 @@ class FacultyAIController:
             prompt = f"""
             Create a {difficulty} exam on '{topic}' for EXACTLY {actual_marks} marks containing a mix of MCQs, True/False, Fill in Blanks, Short and Long answers.
             
-            CRITICAL AND STRICT REQUIREMENT: You MUST strictly generate EXACTLY {total_q_count} questions in total in the 'questions' array. 
-            Do NOT stop early! Do NOT use placeholders. Write out all {total_q_count} questions fully. 
-            Ensure 'q_num' increments from 1 up to exactly {total_q_count}.
-            
+            {strict_rules}
+            REQUIREMENT: You MUST strictly generate EXACTLY {total_q_count} questions in total in the 'questions' array.
             - {dist['mcq']} MCQs (type: "mcq", 1 mark each)
             - {dist['true_false']} True/False questions (type: "true_false", 1 mark each)
             - {dist['fill_in_the_blank']} Fill in the Blanks (type: "fill_in_the_blank", 1 mark each)
@@ -278,8 +283,7 @@ class FacultyAIController:
             {{
                 "topic": "{topic}", "difficulty": "{difficulty}", "total_marks": {actual_marks}, "format": "Mixed",
                 "questions": [
-                    {{"q_num": 1, "type": "mcq", "question": "Write the first question here", "options": ["A) 1", "B) 2", "C) 3", "D) 4"], "marks": 1, "answer": "A) 1"}},
-                    {{"q_num": 2, "type": "short_answer", "question": "Write the second question here", "marks": 2, "max_characters": 180, "expected_answer": "Answer here"}}
+                    {{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "marks": 1, "answer": "..."}}
                 ]
             }}
             """
