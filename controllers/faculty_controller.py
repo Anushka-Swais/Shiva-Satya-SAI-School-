@@ -161,11 +161,13 @@ class FacultyAIController:
         
         if is_mixed_mode:
             dist = self._calculate_mixed_distribution(actual_marks)
+            # FIX: Calculate exact total question count to prevent LLM lazy generation
+            total_q_count = sum(dist.values())
             
             prompt = f"""
             Act as an expert school exam setter. Create a {difficulty} exam paper for '{topic}' totaling EXACTLY {actual_marks} marks.
 
-            CRITICAL REQUIREMENT: You MUST generate questions with different types. Do NOT generate only MCQs.
+            CRITICAL REQUIREMENT: You MUST generate EXACTLY {total_q_count} questions in total. Do NOT stop early!
             Generate a single flat array called 'questions' containing EXACTLY:
             - {dist['mcq']} MCQs (type: "mcq", 1 mark each)
             - {dist['true_false']} True/False questions (type: "true_false", 1 mark each)
@@ -187,10 +189,7 @@ class FacultyAIController:
                 "format": "Mixed",
                 "questions": [
                     {{"q_num": 1, "type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "marks": 1, "answer": "..."}},
-                    {{"q_num": 2, "type": "true_false", "question": "...", "options": ["True", "False"], "marks": 1, "answer": "..."}},
-                    {{"q_num": 3, "type": "fill_in_the_blank", "question": "...", "marks": 1, "answer": "..."}},
-                    {{"q_num": 4, "type": "short_answer", "question": "...", "marks": 2, "max_characters": 180, "expected_answer": "..."}},
-                    {{"q_num": 5, "type": "long_answer", "question": "...", "marks": 4, "max_characters": 2000, "expected_answer": "..."}}
+                    {{"q_num": 2, "type": "short_answer", "question": "...", "marks": 2, "max_characters": 180, "expected_answer": "..."}}
                 ]
             }}
             """
@@ -198,6 +197,9 @@ class FacultyAIController:
         elif "true" in format_clean or "false" in format_clean or "tf" in format_clean:
             prompt = f"""
             Create a {difficulty} exam on '{topic}' containing EXACTLY {actual_marks} True/False questions (1 mark each).
+            
+            CRITICAL REQUIREMENT: You MUST generate EXACTLY {actual_marks} items in the 'questions' array. Do not stop early.
+            
             Return ONLY valid JSON.
             Schema:
             {{
@@ -209,6 +211,9 @@ class FacultyAIController:
         elif "mcq" in format_clean or "quiz" in format_clean:
             prompt = f"""
             Create a {difficulty} exam on '{topic}' containing EXACTLY {actual_marks} MCQ questions (1 mark each).
+            
+            CRITICAL REQUIREMENT: You MUST generate EXACTLY {actual_marks} items in the 'questions' array. Do not stop early.
+            
             Return ONLY valid JSON.
             Schema:
             {{
@@ -221,6 +226,9 @@ class FacultyAIController:
             count = max(1, actual_marks // 2)
             prompt = f"""
             Create a {difficulty} exam on '{topic}' containing EXACTLY {count} Short Answer questions (2 marks each = {count * 2} marks total).
+            
+            CRITICAL REQUIREMENT: You MUST generate EXACTLY {count} items in the 'questions' array. Do not stop early.
+            
             Do NOT include options array. Maximum 180 characters allowed per response.
             Return ONLY valid JSON.
             Schema:
@@ -233,6 +241,9 @@ class FacultyAIController:
         elif "fill" in format_clean or "blank" in format_clean:
             prompt = f"""
             Create a {difficulty} exam on '{topic}' containing EXACTLY {actual_marks} Fill in the Blank questions (1 mark each).
+            
+            CRITICAL REQUIREMENT: You MUST generate EXACTLY {actual_marks} items in the 'questions' array. Do not stop early.
+            
             Do NOT include options array.
             Return ONLY valid JSON.
             Schema:
@@ -243,12 +254,12 @@ class FacultyAIController:
             """
 
         else:
-            # FIX: Properly applied the exact quantities calculated by 'dist' to enforce limits on standard edge cases
             dist = self._calculate_mixed_distribution(actual_marks)
+            total_q_count = sum(dist.values())
             prompt = f"""
             Create a {difficulty} exam on '{topic}' for EXACTLY {actual_marks} marks containing a mix of MCQs, True/False, Fill in Blanks, Short and Long answers.
             
-            CRITICAL REQUIREMENT: You MUST strictly generate:
+            CRITICAL REQUIREMENT: You MUST strictly generate EXACTLY {total_q_count} questions in total in the 'questions' array. Do NOT stop early!
             - {dist['mcq']} MCQs (type: "mcq", 1 mark each)
             - {dist['true_false']} True/False questions (type: "true_false", 1 mark each)
             - {dist['fill_in_the_blank']} Fill in the Blanks (type: "fill_in_the_blank", 1 mark each)
@@ -275,7 +286,7 @@ class FacultyAIController:
             db.close()
             
         return response.text.replace("```json", "").replace("```", "").strip()
-        
+    
     def auto_correct_answer(self, question: str, student_answer: str, rubric: str, user_email: str, client_name: str):
         prompt = f"""
         Grade this student answer based on the rubric.
